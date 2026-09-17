@@ -1,0 +1,2 @@
+# Historical RTL backups are not part of the reproducible source manifest.
+*.bak.sv

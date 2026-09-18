@@ -1,127 +1,134 @@
 # OpenIOMMU
 
-<!-- vim-markdown-toc GFM -->
+OpenIOMMU 是北京开源芯片研究院（BOSC）开发的开源 RISC-V IOMMU
+SystemVerilog 实现。仓库根目录就是 RTL 工程根目录，顶层模块为
+`iommu_wrap`。
 
-* [简介（Introduction）](#简介introduction)
-* [目录结构（Directory Structure）](#目录结构directory-structure)
-* [使用方法（Usage）](#使用方法usage)
-  * [XiangShan 仿真（XiangShan Simulation）](#xiangshan-仿真xiangshan-simulation)
-  * [其他仿真工程（Other Simulation Projects）](#其他仿真工程other-simulation-projects)
-* [许可证（License）](#许可证license)
+OpenIOMMU is an open-source RISC-V IOMMU SystemVerilog implementation from the
+Beijing Institute of Open Source Chip (BOSC). The repository root is the RTL
+project root, and the integration top-level module is `iommu_wrap`.
 
-<!-- vim-markdown-toc -->
+## 功能概览（Overview）
 
-OpenIOMMU 是北京开源芯片研究院（BOSC）开发的开源 RISC-V IOMMU 实现。
-本仓库中的 `bosc-iommu-v2` 是当前用于 XiangShan 仿真集成的 SystemVerilog RTL
-版本，顶层模块为 `iommu_wrap`。
+当前 RTL 包括：
 
-OpenIOMMU is an open-source RISC-V IOMMU implementation developed by the Beijing
-Institute of Open Source Chip (BOSC). The `bosc-iommu-v2` directory contains the
-SystemVerilog RTL version currently integrated with XiangShan simulation. Its
-top-level module is `iommu_wrap`.
+* `iommu_wrap.sv`：集成顶层模块；
+* `rtl_atd/`：地址转换、页表遍历、设备侧请求及软件管理通路；
+* `rtl_acd/`：配置、TLB、事务处理及相关数据通路；
+* `axi4_traffic.sv` 和 `iommu_axi_mon.sv`：AXI/ACE-Lite 相关接口逻辑；
+* `lib_sram/`：RTL、FPGA 和 ASIC SRAM 模型；
+* `iommu_wrap.f`：按依赖顺序排列的完整仿真 filelist；
+* `Kbuild`：内核风格构建系统使用的源文件聚合入口。
 
-## 简介（Introduction）
+The RTL is organized as follows:
 
-当前实现包括：
-
-* IOMMU RTL：`bosc-iommu-v2/rtl_atd` 和 `bosc-iommu-v2/rtl_acd`
-* 集成顶层：`bosc-iommu-v2/iommu_wrap.sv`
-* APB 配置接口
-* 面向设备请求的 AXI/ACE-Lite 从接口和转换后请求的主接口
-* 页表遍历及相关数据通路接口
-* 用于仿真集成的有序 RTL manifest：`bosc-iommu-v2/OpenIOMMU.mk`
-
-This implementation includes:
-
-* IOMMU RTL under `bosc-iommu-v2/rtl_atd` and `bosc-iommu-v2/rtl_acd`
-* Integration top level at `bosc-iommu-v2/iommu_wrap.sv`
-* An APB configuration interface
-* AXI/ACE-Lite slave interfaces for device requests and master interfaces for
-  translated requests
-* Page-table-walk and related data-path interfaces
-* An ordered RTL manifest for simulation integration at
-  `bosc-iommu-v2/OpenIOMMU.mk`
+* `iommu_wrap.sv`: integration top level;
+* `rtl_atd/`: address translation, page-table walk, device-request, and
+  software-management logic;
+* `rtl_acd/`: configuration, TLB, transaction, and related data-path logic;
+* `axi4_traffic.sv` and `iommu_axi_mon.sv`: AXI/ACE-Lite interface logic;
+* `lib_sram/`: RTL, FPGA, and ASIC SRAM models;
+* `iommu_wrap.f`: ordered simulation filelist;
+* `Kbuild`: source aggregation entry point for Kbuild-style systems.
 
 ## 目录结构（Directory Structure）
 
 ```text
 OpenIOMMU/
-└── bosc-iommu-v2/
-    ├── iommu_wrap.sv       # 集成顶层 / integration top level
-    ├── OpenIOMMU.mk        # Verilator/VCS 共用 RTL manifest
-    ├── iommu_wrap.f        # 参考 filelist，保留 RTL 顺序，香山环境没有使用
-    ├── rtl_atd/            # CDW/PTW地址转换、APB/CQ/FQ/PQ/MSI/HPM相关 RTL
-    ├── rtl_acd/            # 由ATD通过AXI4S+自定义协议配置、TLB缓存、HPM及MRIF数据通路相关 RTL
-    └── lib_sram/           # SRAM 模型，当开启宏定义IOMMU_IMPLEMENTATION时可以选择sram_wrap中的3种model
+├── iommu_wrap.sv       # 顶层模块 / integration top level
+├── iommu_wrap.f        # 有序 RTL filelist / ordered RTL filelist
+├── axi4_traffic.sv     # 自测试激励产生模块，AXI4接口
+├── iommu_axi_mon.sv    # 监控数据通路slv/mst功能模块
+├── Kbuild              # 保留，当前环境不使用
+├── rtl_atd/            # CDW/PTW地址转换、APB/CQ/FQ/PQ/MSI/HPM相关功能 / address translation datapath
+├── rtl_acd/            # 由ATD通过AXI4S+自定义协议配置、TLB缓存、HPM、MRIF和数据通路相关功能 / configuration and transaction datapath
+└── lib_sram/           # SRAM 模型，，当开启宏定义IOMMU_IMPLEMENTATION时可以选择sram_wrap中的3种model / SRAM models
 ```
 
-`OpenIOMMU.mk` 是仿真构建使用的统一入口。新增、删除或调整 RTL 文件顺序时，
-应同步检查 `OpenIOMMU.mk` 和 `iommu_wrap.f`，不得使用无序的 `find *.sv` 替代。
+`iommu_wrap.f` 中的路径均相对于 OpenIOMMU 仓库根目录。新增、删除或调整
+RTL 文件时，应同步检查该 filelist 的顺序；不要使用无序的
+`find *.sv` 替代它。RTL 文件直接位于本仓库根目录及其功能子目录中。
 
-`OpenIOMMU.mk` is the canonical entry point for simulation builds. When adding,
-removing, or reordering RTL sources, keep it synchronized with `iommu_wrap.f`.
-Do not replace the ordered manifest with an unordered `find *.sv` command.
+All paths in `iommu_wrap.f` are relative to the OpenIOMMU repository root.
+Keep the filelist order when adding, removing, or reordering RTL sources; do not
+replace it with an unordered `find *.sv` command. RTL sources live directly in
+the repository root and its functional subdirectories.
 
-## 使用方法（Usage）
+## XiangShan 集成（XiangShan Integration）
 
-### XiangShan 仿真（XiangShan Simulation）
+XiangShan 将本仓库作为 `OpenIOMMU` git submodule 使用。先在 XiangShan
+仓库根目录初始化子模块：
 
-将本仓库作为 XiangShan 的 `OpenIOMMU` 子模块初始化后，通过
-`WITH_IOMMU=1` 显式启用 IOMMU。默认构建不例化 IOMMU，也不编译本仓库 RTL。
-
-Initialize this repository as the `OpenIOMMU` submodule of XiangShan and use
-`WITH_IOMMU=1` to enable it explicitly. The default build neither instantiates
-the IOMMU nor compiles this RTL.
+XiangShan consumes this repository as the `OpenIOMMU` git submodule. From the
+XiangShan repository root, initialize the submodule first:
 
 ```bash
 git submodule update --init --recursive
-
-# Verilator
-make clean
-make emu CONFIG=DefaultConfig WITH_IOMMU=1 -j$(nproc)
-
-# VCS
-make clean
-make simv CONFIG=DefaultConfig WITH_IOMMU=1 -j$(nproc)
-
-# Baseline without IOMMU
-make clean
-make emu CONFIG=DefaultConfig -j$(nproc)
 ```
 
-切换 `WITH_IOMMU` 的值前必须清理构建目录，以免复用由另一配置生成的 RTL。
+通过 `WITH_IOMMU=1` 显式启用 IOMMU。XiangShan 的 Makefile 会将
+`OpenIOMMU/iommu_wrap.f` 直接传给 Verilator 或 VCS；未设置该变量时，默认
+构建不会编译或例化 OpenIOMMU。
 
-Clean the build directory before changing `WITH_IOMMU`, otherwise previously
-generated RTL may be reused with the wrong configuration.
+Enable the IOMMU explicitly with `WITH_IOMMU=1`. XiangShan's Makefile passes
+`OpenIOMMU/iommu_wrap.f` directly to Verilator or VCS. Without this variable,
+the default build does not compile or instantiate OpenIOMMU.
 
-### 其他仿真工程（Other Simulation Projects）
-
-其他 Makefile 工程可以设置 `IOMMU_ROOT`，包含 `OpenIOMMU.mk`，再将其中的
-`IOMMU_VSRC` 和 `IOMMU_VFLAGS` 传给 Verilator、VCS 或其他兼容的 SystemVerilog
-仿真器：
-
-Other Makefile-based projects can set `IOMMU_ROOT`, include `OpenIOMMU.mk`, and
-pass `IOMMU_VSRC` and `IOMMU_VFLAGS` to Verilator, VCS, or another compatible
-SystemVerilog simulator:
-
-```make
-IOMMU_ROOT := $(abspath path/to/OpenIOMMU/bosc-iommu-v2)
-include $(IOMMU_ROOT)/OpenIOMMU.mk
-
-SIM_VSRC   += $(IOMMU_VSRC)
-SIM_VFLAGS += $(IOMMU_VFLAGS)
-```
-
-集成方应根据目标配置自行添加所需的编译宏。XiangShan 当前的轻量配置使用：
-
-The integrating project is responsible for adding configuration-specific
-preprocessor definitions. The current XiangShan lite configuration uses:
-
+```bash
 ```make
 SIM_VFLAGS += +define+WITH_IOMMU +define+CONFIG_RISCV_IOMMU_BOSC_V2_LITE
 ```
+
+# Run from the XiangShan repository root.
+make clean
+make emu CONFIG=DefaultConfig WITH_IOMMU=1 -j"$(nproc)"
+
+make clean
+make simv CONFIG=DefaultConfig WITH_IOMMU=1 -j"$(nproc)"
+
+# Baseline build without IOMMU.
+make clean
+make emu CONFIG=DefaultConfig -j"$(nproc)"
+```
+
+切换 `WITH_IOMMU` 前请清理 `build/`，避免复用另一种配置生成的 RTL。
+
+Clean `build/` before changing `WITH_IOMMU` so that generated RTL from another
+configuration is not reused.
+
+## 其他仿真工程（Other Simulation Projects）
+
+其他工程应将根目录的 `iommu_wrap.f` 作为仿真器的 filelist，并将其路径
+解析为绝对路径或相对于 filelist 的路径。例如：
+
+Other simulation projects should pass the root-level `iommu_wrap.f` to the
+simulator. Use an absolute path, or preserve the filelist's repository-root
+relative paths:
+
+```make
+OPENIOMMU_ROOT := $(abspath path/to/OpenIOMMU)
+IOMMU_FILELIST := $(OPENIOMMU_ROOT)/iommu_wrap.f
+
+# Add IOMMU_FILELIST to the simulator command line.
+# Verilator: verilator ... -F $(IOMMU_FILELIST)
+# VCS and other tools: use their filelist option with $(IOMMU_FILELIST).
+```
+
+集成方负责提供与目标平台匹配的宏定义。常用配置包括：
 采用VCS仿真的时候，可以采用默认不打开IOMMU_IMPLEMENTATION的宏定义
-使用DC综合/FPGA验证/VCS仿真的时候，可以打开IOMMU_IMPLEMENTATION，然后根据RTL_RAM_SIM/FPGA_RAM_SIM/ASIC_RAM_SIM选择匹配的模型
+使用DC综合/FPGA验证/VCS仿真的时候，可以打开IOMMU_IMPLEMENTATION
+
+* `CONFIG_RISCV_IOMMU_BOSC_V2_LITE`：启用 XiangShan 使用的轻量配置；
+* `IOMMU_IMPLEMENTATION`：启用 SRAM 实现选择逻辑；
+* `RTL_RAM_SIM`、`FPGA_RAM_SIM`、`ASIC_RAM_SIM`：选择对应的 SRAM 模型。
+
+The integrating project is responsible for target-specific preprocessor
+definitions. Common definitions are:
+
+* `CONFIG_RISCV_IOMMU_BOSC_V2_LITE`: XiangShan lightweight configuration;
+* `IOMMU_IMPLEMENTATION`: enable SRAM implementation selection logic;
+* `RTL_RAM_SIM`, `FPGA_RAM_SIM`, `ASIC_RAM_SIM`: select the corresponding SRAM
+  model.
 
 ## 许可证（License）
 

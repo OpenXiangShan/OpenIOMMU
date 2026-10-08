@@ -6,7 +6,6 @@ rtlflags-y += +define+RTL_RAM_SIM
 sim-y += sram_acd_16x106.v \
     sram_acd_16x121.v \
     sram_acd_16x306.v \
-    sram_acd_16x31.v \
     sram_acd_16x32.v \
     sram_acd_16x53.v \
     sram_acd_16x62.v \
@@ -14,13 +13,9 @@ sim-y += sram_acd_16x106.v \
     sram_acd_16x84.v \
     sram_acd_16x87.v \
     sram_acd_16x95.v \
-    sram_acd_256x341.v \
-    sram_acd_256x361.v \
     sram_acd_2p256x342.v \
     sram_acd_2p256x361.v \
     sram_acd_2p32x297.v \
     sram_acd_2p32x333.v \
     sram_acd_2p64x206.v \
-    sram_acd_2p64x85.v \
-    sram_acd_64x197.v \
-    sram_acd_64x84.v
+    sram_acd_2p64x85.v

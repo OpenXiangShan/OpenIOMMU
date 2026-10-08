@@ -66,7 +66,7 @@ TS5N12FFCLLULVTA16X121M2S u_mem(
  .CEB(CEB),
  .CLK(RW0_clk),
  .RTSEL(2'b01),
- .WTSEL(2'b00)
+ .WTSEL(2'b01)
  );
 `endif
 

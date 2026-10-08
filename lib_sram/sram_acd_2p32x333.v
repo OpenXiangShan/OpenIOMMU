@@ -77,7 +77,7 @@ TS6N12FFCLLULVTB32X168M1 u0_mem(
  .REB(REB),
  .CLK(RW0_clk),
  .RTSEL(2'b01),
- .WTSEL(2'b00),
+ .WTSEL(2'b01),
  .MTSEL(2'b01)
  );
 
@@ -90,7 +90,7 @@ TS6N12FFCLLULVTB32X168M1 u1_mem(
  .REB(REB),
  .CLK(RW0_clk),
  .RTSEL(2'b01),
- .WTSEL(2'b00),
+ .WTSEL(2'b01),
  .MTSEL(2'b01)
  );
 `endif

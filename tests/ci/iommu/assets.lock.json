@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "assets": {
+    "picker_sdk": {
+      "path": "picker-xspcomm-0221570d2434-linux-x86_64.tar.gz",
+      "jf_path": "hejian-workspace/guoyaxing/openiommu-ci/tools/0221570d2434/picker-xspcomm-0221570d2434-linux-x86_64.tar.gz",
+      "size": 3810317,
+      "sha256": "62ec5bd7cf60d72fb568572e727092c838f940ebced19aa771debb34ec9e0249",
+      "schema": 1,
+      "source_commit": "0221570d2434062d7ea869ef13548520e35ed409",
+      "source_repository": "git@gitlab.bosoc.cc:veriops/xsv.git",
+      "source_archive_sha256": "9425f398b3ae3c93493eb3e90a6467cd39841ba0ee030e2a08c11d1dbf423735",
+      "platform": "linux-x86_64",
+      "coroutine": true,
+      "compiler": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "template_patch": "Add build/install aliases; do not run example"
+    },
+    "kernel": {
+      "path": "riscv-linux-devel-clean/d3e51a02cc62/Image",
+      "jf_path": "hejian-workspace/guoyaxing/qemu-ci/linux/iommu/20261007/d3e51a02cc62/Image",
+      "size": 29611520,
+      "sha256": "1c75064fa376a4286bad372ce2f4a67154f23aec0c8f8010b20f8867d821798a",
+      "source": "riscv-linux-devel-clean git archive; defconfig xiangshan.config",
+      "source_commit": "d3e51a02cc629221404c9a871da9aec8ec42767d",
+      "kernel_release": "6.18.34",
+      "config_sha256": "8621012714b457f9b099fb8cd68104c717096cd0aadfa1ee756c0da69b81c04a",
+      "initramfs_sha256": "718411d17729997a2258f6b1646b564da8be25673bdf59035017f140f1bec547",
+      "compiler": "riscv64-unknown-linux-gnu-gcc (ge97179bacd0) 15.0.0 20241107 (experimental)",
+      "license": "GPL-2.0-only WITH Linux-syscall-note"
+    },
+    "fw_jump": {
+      "path": "st-release-v0.9.99/fw_jump/fw_jump-kmh-v2-no-dtb.bin",
+      "jf_path": "xs-sw/st-release/v0.9.99/fw_jump/fw_jump-kmh-v2-no-dtb.bin",
+      "size": 274704,
+      "sha256": "d8da253945e544c284b0757a9ddc9cb799c13912e34616a33279bc288dbf4bd2",
+      "source": "st-release-v0.9.99"
+    },
+    "rootfs": {
+      "path": "st-release-v0.9.99/openEuler-minimal-rootfs/openEuler-minimal-rootfs-24.03-SP3-RVA23.ext4",
+      "jf_path": "xs-sw/st-release/v0.9.99/openEuler-minimal-rootfs/openEuler-minimal-rootfs-24.03-SP3-RVA23.ext4",
+      "size": 536870912,
+      "sha256": "4b0ddf5b06eb26369f5c2df1f87c63d94fb47d249e9c99d7d0291cf80a720ee5",
+      "source": "st-release-v0.9.99"
+    },
+    "berkeley-softfloat-3": {
+      "revision": "b64af41c3276f97f0e181920400ee056b9c88037",
+      "path": "native-deps/berkeley-softfloat-3-b64af41c3276f97f0e181920400ee056b9c88037.tar",
+      "jf_path": "hejian-workspace/guoyaxing/qemu-ci/native-deps/berkeley-softfloat-3-b64af41c3276f97f0e181920400ee056b9c88037.tar",
+      "size": 2273280,
+      "sha256": "9b6d63657c075ae34d93e20d491a3ec959e1f27e091fa1550585a045aae1740d"
+    },
+    "berkeley-testfloat-3": {
+      "revision": "e7af9751d9f9fd3b47911f51a5cfd08af256a9ab",
+      "path": "native-deps/berkeley-testfloat-3-e7af9751d9f9fd3b47911f51a5cfd08af256a9ab.tar",
+      "jf_path": "hejian-workspace/guoyaxing/qemu-ci/native-deps/berkeley-testfloat-3-e7af9751d9f9fd3b47911f51a5cfd08af256a9ab.tar",
+      "size": 1935360,
+      "sha256": "20e6f1ddaeae358ff22415236cfdfdfe7a1a10443c6208e9446e099f61d5d5f9"
+    },
+    "keycodemapdb": {
+      "revision": "f5772a62ec52591ff6870b7e8ef32482371f22c6",
+      "path": "native-deps/keycodemapdb-f5772a62ec52591ff6870b7e8ef32482371f22c6.tar",
+      "jf_path": "hejian-workspace/guoyaxing/qemu-ci/native-deps/keycodemapdb-f5772a62ec52591ff6870b7e8ef32482371f22c6.tar",
+      "size": 133120,
+      "sha256": "4f08abb658b465864b5b6bcddf505028332c8e768aea709602dc9fd66146c92f"
+    }
+  }
+}

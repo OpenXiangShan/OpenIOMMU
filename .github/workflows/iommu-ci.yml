@@ -1,0 +1,157 @@
+name: OpenIOMMU CI
+on:
+  pull_request:
+  push:
+    branches: [open_iommu_v2]
+    tags: ['*']
+  schedule:
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Reviewed full 40-character commit SHA; empty uses the workflow ref'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iommu-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IOMMU_CI_WORK: .ci-work/pipeline
+  IOMMU_CI_JOBS: '8'
+  IOMMU_CI_JF_BASE_URL: ${{ vars.IOMMU_CI_JF_BASE_URL }}
+  IOMMU_CI_JF_TOKEN: ${{ secrets.IOMMU_CI_JF_TOKEN }}
+  VCS_ENV: ${{ vars.VCS_ENV }}
+
+jobs:
+  # Fork PRs never execute automatically on a privileged internal runner.
+  public-check:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 -m pip install -r tests/ci/iommu/requirements.txt
+      - run: python3 -m unittest discover -s tests/ci/iommu -p test_ci.py -v
+      - run: python3 tests/ci/iommu/lint_ci.py
+
+  check:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, openiommu-ci]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.revision || github.sha }}
+      - if: github.event_name == 'workflow_dispatch' && inputs.revision != ''
+        env:
+          REVIEWED_SHA: ${{ inputs.revision }}
+        run: python3 -c 'import os,re; assert re.fullmatch("[0-9a-fA-F]{40}", os.environ["REVIEWED_SHA"])'
+      - run: python3 tests/ci/iommu/ci.py check --work-dir "$IOMMU_CI_WORK"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: selection
+          path: .ci-work/pipeline/
+          include-hidden-files: true
+
+  build:
+    needs: check
+    runs-on: [self-hosted, Linux, X64, openiommu-ci]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: selection
+          path: .ci-work/pipeline
+      - run: python3 tests/ci/iommu/ci.py doctor --work-dir "$IOMMU_CI_WORK"
+      - run: python3 tests/ci/iommu/ci.py build --work-dir "$IOMMU_CI_WORK" --jobs "$IOMMU_CI_JOBS"
+      # tar preserves executable modes and VCS directories across Actions jobs.
+      - if: always()
+        run: python3 tests/ci/iommu/artifacts.py pack --work-dir "$IOMMU_CI_WORK" --archive .ci-work/build-evidence.tar.gz
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build
+          path: .ci-work/build-evidence.tar.gz
+          include-hidden-files: true
+
+  test:
+    needs: [check, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [rtl, linux]
+    runs-on: [self-hosted, Linux, X64, openiommu-ci]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: .ci-work
+      - run: python3 tests/ci/iommu/artifacts.py unpack --work-dir "$IOMMU_CI_WORK" --archive .ci-work/build-evidence.tar.gz
+      - env:
+          IOMMU_CI_GROUP: ${{ matrix.group }}
+        run: python3 tests/ci/iommu/ci.py run --work-dir "$IOMMU_CI_WORK" --group "$IOMMU_CI_GROUP"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-${{ matrix.group }}
+          path: |
+            .ci-work/pipeline/results/
+            .ci-work/pipeline/reports/
+            .ci-work/pipeline/stage-errors/
+          include-hidden-files: true
+
+  report:
+    if: always() && needs.check.result != 'skipped'
+    needs: [check, build, test]
+    runs-on: [self-hosted, Linux, X64, openiommu-ci]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.revision || github.sha }}
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: selection
+          path: .ci-work/pipeline
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: build
+          path: .ci-work
+      - if: hashFiles('.ci-work/build-evidence.tar.gz') != ''
+        run: python3 tests/ci/iommu/artifacts.py unpack --work-dir "$IOMMU_CI_WORK" --archive .ci-work/build-evidence.tar.gz
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: results-*
+          path: .ci-work/pipeline
+          merge-multiple: true
+      - run: python3 tests/ci/iommu/ci.py report --work-dir "$IOMMU_CI_WORK"
+      - if: always()
+        run: cat .ci-work/pipeline/reports/all/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report
+          path: .ci-work/pipeline/reports/all/
+          include-hidden-files: true

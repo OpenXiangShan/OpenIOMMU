@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "qemu": {"url": "git@gitlab.bosoc.cc:openxiangshan/qemu.git", "ref": "refs/heads/devel"},
+  "io_system": "qemu/third_party/io-system-lib",
+  "iommu_api": "qemu/third_party/io-system-lib/src/iommu_api",
+  "tool_source": {"url": "git@gitlab.bosoc.cc:veriops/xsv.git", "commit": "0221570d2434062d7ea869ef13548520e35ed409", "paths": ["contrib/unitychip/picker", "contrib/unitychip/xcomm"]}
+}

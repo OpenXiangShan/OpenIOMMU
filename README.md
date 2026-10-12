@@ -130,6 +130,16 @@ definitions. Common definitions are:
 * `RTL_RAM_SIM`, `FPGA_RAM_SIM`, `ASIC_RAM_SIM`: select the corresponding SRAM
   model.
 
+## 持续集成（CI）
+
+GitLab 和 GitHub 共用 picker/VCS、RTL IOMMU、QEMU io-system 测试入口、
+工具包和 JFrog 镜像清单。用例和运行说明见
+[`tests/ci/iommu/README.md`](tests/ci/iommu/README.md)。
+
+GitLab and GitHub share the same Picker/VCS, RTL IOMMU and QEMU io-system
+test harness and immutable artifact inputs. See the
+[CI guide](tests/ci/iommu/README.md).
+
 ## 许可证（License）
 
 OpenIOMMU 使用木兰宽松许可证第 2 版（Mulan PSL v2）。详情请参阅

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "cases": [
+    {"id": "picker-runtime", "group": "rtl", "timeout": 120},
+    {"id": "rtl-apb", "group": "rtl", "timeout": 120},
+    {"id": "rtl-dma-bypass", "group": "rtl", "timeout": 180},
+    {"id": "rtl-dma-translate", "group": "rtl", "timeout": 180},
+    {"id": "rtl-dma-fault", "group": "rtl", "timeout": 180},
+    {"id": "rtl-invalidate", "group": "rtl", "timeout": 180},
+    {"id": "qemu-linux-nvme-ext4", "group": "linux", "timeout": 1200}
+  ]
+}

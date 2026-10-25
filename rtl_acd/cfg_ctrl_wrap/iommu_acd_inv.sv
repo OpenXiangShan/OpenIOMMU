@@ -611,7 +611,7 @@ module iommu_acd_inv_entry #( //{{{
                 inv_tlbcache_req_o.av       <= inv_req_i.av       ;
                 inv_tlbcache_req_o.addr     <= inv_req_i.addr     ;
             end
-            else
+            else if(inv_tlbcache_req_valid_o & inv_tlbcache_req_ready_i)
                 inv_tlbcache_req_valid_o    <= 1'b0;
         end
     end

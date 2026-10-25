@@ -268,7 +268,7 @@ end
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
         fq_on <= 1'b0;
-    else if (!fq_en && (fq_cs == IDLE))
+    else if (!fq_en && !fq_en_d && (fq_cs == IDLE))
         fq_on <= 1'b0;
     else if (fq_en && !fq_en_d)
         fq_on <= 1'b1;

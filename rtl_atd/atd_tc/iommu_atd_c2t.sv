@@ -130,7 +130,7 @@ end
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
         atd_c2t_cq_ack <= 1'b0;
-    else if (atd_c2t_rvalid_i && atd_c2t_rlast_i && ((msg_code == 4'd4) || (msg_code == 4'd5)))
+    else if ((c2t_cs == IDLE) && atd_c2t_rvalid_i && atd_c2t_rready && atd_c2t_rlast_i && ((msg_code == 4'd4) || (msg_code == 4'd5)))
         atd_c2t_cq_ack <= 1'b1;
     else
         atd_c2t_cq_ack <= 1'b0;

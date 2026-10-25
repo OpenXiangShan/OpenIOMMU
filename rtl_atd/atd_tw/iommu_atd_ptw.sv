@@ -1594,7 +1594,7 @@ always@(*) begin
         ptw_other_error = 1'b1;
     else if ((ptw_cs == S1_L3_PTE || ptw_cs == S1_L2_PTE || ptw_cs == S1_L1_PTE) &&
                                     ((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) &&
-                                    ((|pte.rsv && !pte.v || (!pte.r && pte.w) || pte.n) ||
+                                    ((|pte.rsv || !pte.v || (!pte.r && pte.w) || pte.n) ||
                                     ((pte.r || pte.x) && s1_ppn_rsv_error) ||
                                     (!pte.r && !pte.x && (pte.a || pte.d || pte.u || |pte.pbmt))))
         ptw_other_error = 1'b1;

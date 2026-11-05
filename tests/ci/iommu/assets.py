@@ -42,7 +42,7 @@ def get_asset(work, name, spec, assets_dir=None):
             raise ValueError("JF path must be repository-relative")
         headers = {}
         if os.environ.get("IOMMU_CI_JF_TOKEN"):
-            headers["Authorization"] = "Bearer " + os.environ["IOMMU_CI_JF_TOKEN"]
+            headers["X-JFrog-Art-Api"] = os.environ["IOMMU_CI_JF_TOKEN"]
         request = urllib.request.Request(base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/"), headers=headers)
         cached.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=cached.parent, prefix="download-")

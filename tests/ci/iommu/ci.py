@@ -64,7 +64,8 @@ def select(work, args):
         selected = [c for c in selected if c["group"] == args.group]
     dependencies = {}
     if selected:
-        dependencies["qemu"] = resolve_dependency(read_json(HERE / "dependencies.json")["qemu"])
+        dependencies["qemu"] = resolve_dependency(read_json(HERE / "dependencies.json")["qemu"],
+                                                   work / "logs/qemu-resolve.log")
     pipeline = {"schema": 1, "run_id": uuid.uuid4().hex, "source": source_identity(),
                 "selected": [c["id"] for c in selected], "dependencies": dependencies,
                 "cases": cases, "created_at": time.time()}

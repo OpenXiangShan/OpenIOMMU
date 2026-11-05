@@ -2,7 +2,7 @@ name: OpenIOMMU CI
 on:
   pull_request:
   push:
-    branches: [open_iommu_v2]
+    branches: [master, open_iommu_v2]
     tags: ['*']
   schedule:
     - cron: '0 18 * * 0'

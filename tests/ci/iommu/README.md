@@ -10,7 +10,10 @@ GitLab、GitHub 和本地共用 `ci.py`，以及唯一的 `dependencies.json`、
 CI 使用 `CONFIG_RISCV_IOMMU_BOSC_V2_LITE`，不启用 `IOMMU_IMPLEMENTATION`。
 源码变化后必须使用新的 work-dir；不会复用旧 RTL 模型或覆盖旧测试结果。
 
-每条流水线在 select 阶段解析 QEMU `devel` commit，记录在 `pipeline.json`；
+每条流水线在 select 阶段通过 HTTPS 查询 `https://github.com/OpenXiangShan/qemu`
+的 `refs/heads/devel` 最新 commit，记录在 `pipeline.json`；
+解析命令、远端 SHA 和错误保存在 `logs/qemu-resolve.log` 及配套 command JSON，
+同时输出到 job 页面；解析失败直接阻塞，不回退本地缓存。
 后续阶段只取这个 commit。io-system 和 IOMMU API 使用该 QEMU 内置版本。
 QEMU 的 native wrap archives 及 packagefiles 也经过 revision/SHA256 校验。
 依赖分支更新导致 wrap/API 不兼容时 CI 失败，不回退到旧预编译 QEMU。
@@ -72,8 +75,8 @@ GitLab 根 `.gitlab-ci.yml` 使用现有 Shell runner，tags 为
 
 GitHub 使用内网 self-hosted runner，labels 为
 `self-hosted,Linux,X64,openiommu-ci`。本 CI 不自动注册 runner；由仓库/组织管理员
-注册到同等环境，并允许执行本仓库工作流。默认 push 分支是当前开发分支
-`open_iommu_v2`；默认分支变更时同步调整入口。
+注册到同等环境，并允许执行本仓库工作流。push 同时覆盖默认分支 `master` 和开发分支 `open_iommu_v2`；
+默认分支变更时同步调整入口。
 
 两边都配置以下同名环境变量：
 
@@ -87,8 +90,11 @@ GitHub 使用内网 self-hosted runner，labels 为
 | `IOMMU_CI_LOCK_TIMEOUT` | 等待主机锁的秒数，默认 1800 |
 | `IOMMU_CI_JOBS` | 构建并发，默认 8 |
 
-Github token 不用于拉取内网 QEMU；两种 runner 都需相同的只读 GitLab SSH 身份。
-SSH known_hosts 在主机部署时配置，CI 不关闭主机身份验证。
+普通流水线通过公开 GitHub HTTPS 拉取 QEMU，不需要 GitLab SSH 身份。
+runner 服务账户必须能够访问 `https://github.com/OpenXiangShan/qemu`；
+网络代理需在该服务账户的环境中配置，不能只依赖交互式 shell。
+`tool_source` 和 SDK 的 `source_repository` 中的 XSV 地址仅记录工具源码来源，
+普通流水线从 JFrog 下载锁定 SDK，不在运行时克隆 XSV。
 VCS case 串行执行；两个平台在同一用户/主机上通过同一个锁协调 license 使用。
 GitHub artifacts 用 tar 保留 Unix 权限，GitLab artifacts 同样只传 runtime bundle
 和证据，不传 Meson build 树。report 始终执行，缺失选中的 case 视为失败。
@@ -115,3 +121,25 @@ python3 tests/ci/iommu/package_tools.py \
 
 验收区分框架自测、本地 VCS/QEMU 实跑、JFrog 下载、GitLab 真实 pipeline、
 GitHub 真实 workflow。尚未注册 GitHub runner 时，本地通过不代表线上通过。
+
+## GitHub runner 故障排查
+
+在实际 runner 服务账户及其 Python 环境中执行：
+
+```bash
+git ls-remote --exit-code --refs https://github.com/OpenXiangShan/qemu refs/heads/devel
+python3 -m pip install -r tests/ci/iommu/requirements.txt
+python3 tests/ci/iommu/ci.py check
+```
+
+`check` 默认生成新的 work-dir；确认 `pipeline.json` 的 `dependencies.qemu.commit`
+与本次远端查询一致。不要复用失败运行的目录。后续 `doctor`、`build`、`run`
+使用该目录，以保证整条流水线使用同一个 QEMU SHA。
+
+如果依赖解析失败，查看 `logs/qemu-resolve.log` 和 `stage-errors/check.json`，
+检查 runner 服务账户的 DNS、HTTPS 出站、代理设置。`check` 通过后，运行
+`ci.py doctor --work-dir <本次目录>` 检查 VCS 环境和编译依赖；构建还需要
+`IOMMU_CI_JF_BASE_URL`、`IOMMU_CI_JF_TOKEN` 对应的下载权限。
+
+修复需进入 GitHub 上的目标分支后，再触发新的 workflow；直接重跑旧提交的失败
+运行仍会使用旧配置。线上验收以新运行的 `check/build/test/report` 全部通过为准。

@@ -3,13 +3,14 @@ import io
 import contextlib
 from pathlib import Path
 import sys
+import subprocess
 import tarfile
 import tempfile
 import time
 import unittest
 
 from assets import extract, verify
-from build import verify_bundle
+from build import resolve_dependency, verify_bundle
 from ci import all_cases, check_runtime_output, collect, report, select_cases
 from common import run_logged, sha256, write_json
 from linux_case import check_boot_uart, check_uart, normalize_console
@@ -33,6 +34,43 @@ class HarnessTests(unittest.TestCase):
                   "evidence": {"driver.log": sha256(log)}}
         write_json(output / "result.json", result)
         return output, result
+
+    def dependency_repository(self):
+        remote = self.work / "qemu-remote"
+        subprocess.run(["git", "init", "-q", str(remote)], check=True)
+        return remote
+
+    def commit_dependency(self, remote):
+        subprocess.run(["git", "-C", str(remote), "-c", "user.name=CI Test",
+                        "-c", "user.email=ci@example.invalid", "-c", "commit.gpgsign=false",
+                        "commit", "-q", "--allow-empty", "-m", "advance devel"], check=True)
+        commit = subprocess.check_output(["git", "-C", str(remote), "rev-parse", "HEAD"], text=True).strip()
+        subprocess.run(["git", "-C", str(remote), "update-ref", "refs/heads/devel", commit], check=True)
+        return commit
+
+    def test_dependency_resolves_latest_remote_branch(self):
+        remote = self.dependency_repository()
+        spec = {"url": str(remote), "ref": "refs/heads/devel"}
+        first = self.commit_dependency(remote)
+        previous = resolve_dependency(spec, self.work / "first.log")
+        self.assertEqual(previous["commit"], first)
+        latest = self.commit_dependency(remote)
+        self.assertNotEqual(first, latest)
+        self.assertEqual(resolve_dependency(spec, self.work / "latest.log")["commit"], latest)
+        self.assertEqual(previous["commit"], first)
+
+    def test_dependency_missing_branch_blocks_selection(self):
+        remote = self.dependency_repository()
+        self.commit_dependency(remote)
+        with self.assertRaises(RuntimeError):
+            resolve_dependency({"url": str(remote), "ref": "refs/heads/missing"}, self.work / "missing.log")
+
+    def test_dependency_failure_preserves_git_diagnostic(self):
+        log = self.work / "unreachable.log"
+        with self.assertRaises(RuntimeError):
+            resolve_dependency({"url": str(self.work / "absent.git"), "ref": "refs/heads/devel"}, log)
+        self.assertIn("fatal:", log.read_text())
+        self.assertTrue(log.with_suffix(".log.command.json").is_file())
 
     def test_documentation_selection(self):
         self.assertEqual(select_cases(all_cases(), ["README.md", "docs/usage.md"]), [])

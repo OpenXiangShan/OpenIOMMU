@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -10,13 +11,21 @@ from assets import extract, get_asset
 from common import HERE, SOURCE, read_json, run_logged, sha256, source_identity, vcs_environment, vcs_lock, write_json
 
 
-def resolve_dependency(spec):
-    result = subprocess.run(["git", "ls-remote", spec["url"], spec["ref"]],
-                            capture_output=True, text=True, timeout=60, check=True)
-    lines = result.stdout.strip().splitlines()
-    if len(lines) != 1 or len(lines[0].split()[0]) != 40:
-        raise ValueError("cannot resolve unique QEMU devel commit")
-    return {**spec, "commit": lines[0].split()[0]}
+def resolve_dependency(spec, log):
+    # Resolve the remote branch afresh for each pipeline; later jobs fetch the
+    # recorded SHA so a moving devel branch cannot change an in-flight build.
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    run_logged(["git", "ls-remote", "--exit-code", "--refs", spec["url"], spec["ref"]],
+               log, env=env, timeout=60)
+    matches = []
+    for line in Path(log).read_text().splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[1] == spec["ref"] and re.fullmatch(r"[0-9a-fA-F]{40}", fields[0]):
+            matches.append(fields[0].lower())
+    if len(matches) != 1:
+        raise ValueError(f"cannot resolve unique QEMU commit for {spec['ref']}; see {log}")
+    print(f"QEMU {spec['url']} {spec['ref']} -> {matches[0]}", flush=True)
+    return {**spec, "commit": matches[0]}
 
 
 def doctor(work, pipeline):

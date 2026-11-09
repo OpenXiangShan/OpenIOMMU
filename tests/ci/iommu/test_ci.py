@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 import urllib.error
 
-from assets import extract, get_asset, verify
+from assets import check_asset_access, extract, get_asset, verify
 from build import resolve_dependency, verify_bundle
 from ci import all_cases, check_runtime_output, collect, report, select_cases
 from common import run_logged, sha256, write_json
@@ -144,7 +144,7 @@ class HarnessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify(asset, {"size": 4, "sha256": "0" * 64})
 
-    def test_jf_asset_download_falls_back_after_auth_failure(self):
+    def test_jf_asset_download_uses_single_bearer_token(self):
         payload = b"test"
         spec = {"path": "asset.bin", "size": len(payload),
                 "sha256": hashlib.sha256(payload).hexdigest(), "jf_path": "repo/asset.bin"}
@@ -163,21 +163,35 @@ class HarnessTests(unittest.TestCase):
                 token = request.get_header("X-jfrog-art-api")
                 authorization = request.get_header("Authorization")
                 seen_auth.append((token, authorization))
-                if token == "primary":
-                    raise urllib.error.HTTPError(request.full_url, 401, "Unauthorized", None, None)
                 return Response(payload)
 
         environment = {
             "IOMMU_CI_JF_BASE_URL": "https://jfrog.example.invalid/artifactory",
             "IOMMU_CI_JF_TOKEN": "primary",
-            "IOMMU_CI_JF_TOKEN_2": "fallback",
+            "IOMMU_CI_JF_TOKEN_2": "must-not-be-used",
         }
         with mock.patch.dict(os.environ, environment, clear=False), \
                 mock.patch("assets.urllib.request.build_opener", return_value=Opener()):
             asset = get_asset(self.work, "fallback-test", spec)
 
-        self.assertEqual(seen_auth, [("primary", None), (None, "Bearer fallback")])
+        self.assertEqual(seen_auth, [(None, "Bearer primary")])
         self.assertEqual(asset.read_bytes(), payload)
+
+    def test_jf_access_probe_reports_forbidden(self):
+        spec = {"jf_path": "repo/asset.bin"}
+
+        class Opener:
+            def open(self, request, timeout):
+                raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", None, None)
+
+        environment = {
+            "IOMMU_CI_JF_BASE_URL": "https://jfrog.example.invalid/artifactory",
+            "IOMMU_CI_JF_TOKEN": "invalid",
+        }
+        with mock.patch.dict(os.environ, environment, clear=False), \
+                mock.patch("assets.urllib.request.build_opener", return_value=Opener()):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                check_asset_access(spec)
 
     def test_archive_traversal_rejected(self):
         archive = self.work / "bad.tar"

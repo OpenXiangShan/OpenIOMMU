@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 
-from assets import extract, get_asset
+from assets import check_asset_access, extract, get_asset
 from common import HERE, SOURCE, read_json, run_logged, sha256, source_identity, vcs_environment, vcs_lock, write_json
 
 
@@ -28,7 +28,7 @@ def resolve_dependency(spec, log):
     return {**spec, "commit": matches[0]}
 
 
-def doctor(work, pipeline):
+def doctor(work, pipeline, assets_dir=None):
     errors = []
     tools = ["git", "python3"]
     env = dict(os.environ)
@@ -56,9 +56,19 @@ def doctor(work, pipeline):
         errors.append("Python >= 3.12 required (safe archive extraction)")
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         errors.append("requires Linux x86_64")
+    jfrog_access = {"checked": False}
+    if pipeline["selected"] and not assets_dir:
+        try:
+            spec = read_json(HERE / "assets.lock.json")["assets"]["picker_sdk"]
+            status = check_asset_access(spec)
+            jfrog_access = {"checked": True, "status": status}
+            print(f"JFrog download access: PASS (HTTP {status})", flush=True)
+        except (ValueError, RuntimeError) as exc:
+            errors.append(str(exc))
+            jfrog_access = {"checked": True, "status": None, "error": str(exc)}
     evidence = {"errors": errors, "python": sys.version,
                 "platform": platform.platform(), "vcs_home": env.get("VCS_HOME"),
-                "free_bytes": shutil.disk_usage(work).free}
+                "free_bytes": shutil.disk_usage(work).free, "jfrog_access": jfrog_access}
     write_json(work / "doctor.json", evidence)
     if errors:
         raise RuntimeError("preflight failed: " + "; ".join(errors))

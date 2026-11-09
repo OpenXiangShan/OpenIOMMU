@@ -84,6 +84,7 @@ GitHub 使用内网 self-hosted runner，labels 为
 | --- | --- |
 | `IOMMU_CI_JF_BASE_URL` | 共用 JFrog 的 `/artifactory` URL |
 | `IOMMU_CI_JF_TOKEN` | 只读下载 token；GitLab masked variable / GitHub secret |
+| `IOMMU_CI_JF_TOKEN_2` | 可选备用下载 token；GitHub Actions 将 `IOMMU_CI_JF_WRITE_TOKEN` Secret 映射到此变量 |
 | `VCS_ENV` | runner 的 VCS 环境脚本；也可由主机提供 VCS_HOME/VERDI_HOME |
 | `IOMMU_CI_CACHE` | 可选下载缓存 |
 | `IOMMU_CI_VCS_LOCK` | 共用主机锁，默认 `/tmp/openiommu-ci-vcs.lock` |
@@ -93,6 +94,8 @@ GitHub 使用内网 self-hosted runner，labels 为
 普通流水线通过公开 GitHub HTTPS 拉取 QEMU，不需要 GitLab SSH 身份。
 runner 服务账户必须能够访问 `https://github.com/OpenXiangShan/qemu`；
 网络代理需在该服务账户的环境中配置，不能只依赖交互式 shell。
+JFrog 下载先使用 `IOMMU_CI_JF_TOKEN`；只有收到 HTTP 401/403 时才用
+`IOMMU_CI_JF_TOKEN_2` 重试。网络错误、404 和摘要校验失败不会切换 token。
 `tool_source` 和 SDK 的 `source_repository` 中的 XSV 地址仅记录工具源码来源，
 普通流水线从 JFrog 下载锁定 SDK，不在运行时克隆 XSV。
 VCS case 串行执行；两个平台在同一用户/主机上通过同一个锁协调 license 使用。

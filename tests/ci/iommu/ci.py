@@ -11,6 +11,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
+from assets import check_asset_access
 from build import build, doctor, resolve_dependency, runtime_env, verify_bundle
 from common import HERE, SOURCE, read_json, run_logged, sha256, source_identity, vcs_lock, write_json
 from linux_case import check_boot_uart, normalize_console
@@ -21,6 +22,13 @@ def all_cases():
     if len({case["id"] for case in cases}) != len(cases):
         raise ValueError("duplicate case IDs")
     return cases
+
+
+def check_jfrog_access():
+    spec = read_json(HERE / "assets.lock.json")["assets"]["picker_sdk"]
+    status = check_asset_access(spec)
+    print(f"JFrog download access: PASS (HTTP {status})")
+    return 0
 
 
 def changed_paths(base=None):
@@ -237,7 +245,7 @@ def report(work, pipeline=None, group=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("check", "select", "doctor", "build", "run", "report", "all"))
+    parser.add_argument("command", choices=("check", "check-jf", "select", "doctor", "build", "run", "report", "all"))
     parser.add_argument("--work-dir", type=Path)
     parser.add_argument("--assets-dir", type=Path)
     parser.add_argument("--case", action="append")
@@ -246,6 +254,12 @@ def main():
     parser.add_argument("--full", action="store_true", default=os.environ.get("IOMMU_CI_FULL") == "1")
     parser.add_argument("--jobs", type=int, default=int(os.environ.get("IOMMU_CI_JOBS", "8")))
     args = parser.parse_args()
+    if args.command == "check-jf":
+        try:
+            return check_jfrog_access()
+        except (ValueError, RuntimeError) as exc:
+            print("JFrog download access: FAIL: " + str(exc), file=sys.stderr)
+            return 1
     if not args.work_dir:
         if args.command not in ("all", "check", "select"):
             parser.error("--work-dir is required for this stage")
@@ -266,7 +280,7 @@ def main():
             return 0
         pipeline = select(work, args) if args.command in ("select", "all") else pipeline_for(work)
         if args.command in ("doctor", "all"):
-            doctor(work, pipeline)
+            doctor(work, pipeline, args.assets_dir)
         if args.command in ("build", "all"):
             build(work, pipeline, args.jobs, args.assets_dir)
         if args.command in ("run", "all"):

@@ -16,6 +16,40 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError("artifact redirect refused; use its final URL")
 
 
+def _jf_headers():
+    token = os.environ.get("IOMMU_CI_JF_TOKEN")
+    if not token:
+        raise ValueError("IOMMU_CI_JF_TOKEN is required for JFrog access")
+    return {"Authorization": "Bearer " + token}
+
+
+def _jf_url(spec):
+    base = os.environ.get("IOMMU_CI_JF_BASE_URL", "")
+    parsed = urllib.parse.urlsplit(base)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.query or parsed.fragment:
+        raise ValueError("IOMMU_CI_JF_BASE_URL must be HTTP(S), without credentials/query")
+    relative = spec["jf_path"]
+    if relative.startswith("/") or ".." in Path(relative).parts or ":" in relative:
+        raise ValueError("JF path must be repository-relative")
+    return base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/")
+
+
+def check_asset_access(spec):
+    """Probe authenticated read access without downloading the artifact body."""
+    headers = {**_jf_headers(), "Range": "bytes=0-0"}
+    request = urllib.request.Request(_jf_url(spec), headers=headers)
+    try:
+        with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+            status = getattr(response, "status", 200)
+            if status not in (200, 206):
+                raise RuntimeError(f"JF access probe returned HTTP {status}")
+            return status
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"JF access probe returned HTTP {exc.code}") from None
+    except urllib.error.URLError:
+        raise RuntimeError("JF access probe failed; check network and IOMMU_CI_JF_TOKEN") from None
+
+
 def verify(path, spec):
     path = Path(path)
     if not path.is_file() or path.stat().st_size != spec["size"] or sha256(path) != spec["sha256"]:
@@ -33,62 +67,37 @@ def get_asset(work, name, spec, assets_dir=None):
         source = verify(cached, spec)
         origin = "cache-verified"
     else:
-        base = os.environ.get("IOMMU_CI_JF_BASE_URL", "")
-        parsed = urllib.parse.urlsplit(base)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.query or parsed.fragment:
-            raise ValueError("IOMMU_CI_JF_BASE_URL must be HTTP(S), without credentials/query")
-        relative = spec["jf_path"]
-        if relative.startswith("/") or ".." in Path(relative).parts or ":" in relative:
-            raise ValueError("JF path must be repository-relative")
-        candidates = []
-        for label, variable, header in (
-            ("primary", "IOMMU_CI_JF_TOKEN", "X-JFrog-Art-Api"),
-            ("fallback", "IOMMU_CI_JF_TOKEN_2", "Authorization"),
-        ):
-            if token := os.environ.get(variable):
-                value = "Bearer " + token if header == "Authorization" else token
-                candidate = (label, {header: value})
-                if candidate not in candidates:
-                    candidates.append(candidate)
-        url = base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/")
+        headers = _jf_headers()
+        request = urllib.request.Request(_jf_url(spec), headers=headers)
         cached.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=cached.parent, prefix="download-")
         os.close(fd)
-        auth_failures = []
-        for index, (label, headers) in enumerate(candidates or (("anonymous", {}),)):
-            request = urllib.request.Request(url, headers=headers)
+        try:
+            import signal
+            previous = signal.getsignal(signal.SIGALRM)
+            def expired(_signum, _frame):
+                raise TimeoutError("asset download exceeded 600 seconds")
+            signal.signal(signal.SIGALRM, expired)
+            signal.alarm(600)
             try:
-                import signal
-                previous = signal.getsignal(signal.SIGALRM)
-                def expired(_signum, _frame):
-                    raise TimeoutError("asset download exceeded 600 seconds")
-                signal.signal(signal.SIGALRM, expired)
-                signal.alarm(600)
-                try:
-                    with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response, open(temporary, "wb") as output:
-                        total = 0
-                        while data := response.read(1024 * 1024):
-                            total += len(data)
-                            if total > spec["size"]:
-                                raise ValueError("asset download exceeds locked size")
-                            output.write(data)
-                finally:
-                    signal.alarm(0)
-                    signal.signal(signal.SIGALRM, previous)
-                verify(temporary, spec)
-                Path(temporary).replace(cached)
-                break
-            except urllib.error.HTTPError as exc:
-                if exc.code in (401, 403):
-                    auth_failures.append(f"{label}=HTTP {exc.code}")
-                    if index + 1 < len(candidates):
-                        continue
-                    raise RuntimeError("JF download authentication failed (" + ", ".join(auth_failures) + ")") from None
-                raise RuntimeError(f"JF download returned HTTP {exc.code}") from None
-            except urllib.error.URLError:
-                raise RuntimeError("JF download failed; check network and credentials") from None
+                with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response, open(temporary, "wb") as output:
+                    total = 0
+                    while data := response.read(1024 * 1024):
+                        total += len(data)
+                        if total > spec["size"]:
+                            raise ValueError("asset download exceeds locked size")
+                        output.write(data)
             finally:
-                Path(temporary).unlink(missing_ok=True)
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, previous)
+            verify(temporary, spec)
+            Path(temporary).replace(cached)
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"JF download returned HTTP {exc.code}") from None
+        except urllib.error.URLError:
+            raise RuntimeError("JF download failed; check network and IOMMU_CI_JF_TOKEN") from None
+        finally:
+            Path(temporary).unlink(missing_ok=True)
         source, origin = cached, "jf-verified"
     destination = work / "assets" / name / Path(spec["path"]).name
     destination.parent.mkdir(parents=True, exist_ok=True)

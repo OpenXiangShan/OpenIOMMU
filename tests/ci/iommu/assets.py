@@ -40,39 +40,46 @@ def get_asset(work, name, spec, assets_dir=None):
         relative = spec["jf_path"]
         if relative.startswith("/") or ".." in Path(relative).parts or ":" in relative:
             raise ValueError("JF path must be repository-relative")
-        headers = {}
-        if os.environ.get("IOMMU_CI_JF_TOKEN"):
-            headers["X-JFrog-Art-Api"] = os.environ["IOMMU_CI_JF_TOKEN"]
-        request = urllib.request.Request(base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/"), headers=headers)
+        tokens = tuple(dict.fromkeys(
+            token for variable in ("IOMMU_CI_JF_TOKEN", "IOMMU_CI_JF_TOKEN_2")
+            if (token := os.environ.get(variable))
+        ))
+        url = base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/")
         cached.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=cached.parent, prefix="download-")
         os.close(fd)
-        try:
-            import signal
-            previous = signal.getsignal(signal.SIGALRM)
-            def expired(_signum, _frame):
-                raise TimeoutError("asset download exceeded 600 seconds")
-            signal.signal(signal.SIGALRM, expired)
-            signal.alarm(600)
+        for index, token in enumerate(tokens or (None,)):
+            headers = {"X-JFrog-Art-Api": token} if token else {}
+            request = urllib.request.Request(url, headers=headers)
             try:
-                with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response, open(temporary, "wb") as output:
-                    total = 0
-                    while data := response.read(1024 * 1024):
-                        total += len(data)
-                        if total > spec["size"]:
-                            raise ValueError("asset download exceeds locked size")
-                        output.write(data)
+                import signal
+                previous = signal.getsignal(signal.SIGALRM)
+                def expired(_signum, _frame):
+                    raise TimeoutError("asset download exceeded 600 seconds")
+                signal.signal(signal.SIGALRM, expired)
+                signal.alarm(600)
+                try:
+                    with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response, open(temporary, "wb") as output:
+                        total = 0
+                        while data := response.read(1024 * 1024):
+                            total += len(data)
+                            if total > spec["size"]:
+                                raise ValueError("asset download exceeds locked size")
+                            output.write(data)
+                finally:
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, previous)
+                verify(temporary, spec)
+                Path(temporary).replace(cached)
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code in (401, 403) and index + 1 < len(tokens):
+                    continue
+                raise RuntimeError(f"JF download returned HTTP {exc.code}") from None
+            except urllib.error.URLError:
+                raise RuntimeError("JF download failed; check network and credentials") from None
             finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, previous)
-            verify(temporary, spec)
-            Path(temporary).replace(cached)
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"JF download returned HTTP {exc.code}") from None
-        except urllib.error.URLError:
-            raise RuntimeError("JF download failed; check network and credentials") from None
-        finally:
-            Path(temporary).unlink(missing_ok=True)
+                Path(temporary).unlink(missing_ok=True)
         source, origin = cached, "jf-verified"
     destination = work / "assets" / name / Path(spec["path"]).name
     destination.parent.mkdir(parents=True, exist_ok=True)

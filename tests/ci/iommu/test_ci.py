@@ -1,6 +1,8 @@
 """Failure handling/identity tests; never claim these validate RTL."""
 import io
 import contextlib
+import hashlib
+import os
 from pathlib import Path
 import sys
 import subprocess
@@ -8,8 +10,10 @@ import tarfile
 import tempfile
 import time
 import unittest
+from unittest import mock
+import urllib.error
 
-from assets import extract, verify
+from assets import extract, get_asset, verify
 from build import resolve_dependency, verify_bundle
 from ci import all_cases, check_runtime_output, collect, report, select_cases
 from common import run_logged, sha256, write_json
@@ -139,6 +143,40 @@ class HarnessTests(unittest.TestCase):
         asset.write_bytes(b"test")
         with self.assertRaises(ValueError):
             verify(asset, {"size": 4, "sha256": "0" * 64})
+
+    def test_jf_asset_download_falls_back_after_auth_failure(self):
+        payload = b"test"
+        spec = {"path": "asset.bin", "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(), "jf_path": "repo/asset.bin"}
+        seen_tokens = []
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                self.close()
+
+        class Opener:
+            def open(self, request, timeout):
+                self.assert_timeout = timeout
+                token = request.get_header("X-jfrog-art-api")
+                seen_tokens.append(token)
+                if token == "primary":
+                    raise urllib.error.HTTPError(request.full_url, 401, "Unauthorized", None, None)
+                return Response(payload)
+
+        environment = {
+            "IOMMU_CI_JF_BASE_URL": "https://jfrog.example.invalid/artifactory",
+            "IOMMU_CI_JF_TOKEN": "primary",
+            "IOMMU_CI_JF_TOKEN_2": "fallback",
+        }
+        with mock.patch.dict(os.environ, environment, clear=False), \
+                mock.patch("assets.urllib.request.build_opener", return_value=Opener()):
+            asset = get_asset(self.work, "fallback-test", spec)
+
+        self.assertEqual(seen_tokens, ["primary", "fallback"])
+        self.assertEqual(asset.read_bytes(), payload)
 
     def test_archive_traversal_rejected(self):
         archive = self.work / "bad.tar"

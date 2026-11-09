@@ -148,7 +148,7 @@ class HarnessTests(unittest.TestCase):
         payload = b"test"
         spec = {"path": "asset.bin", "size": len(payload),
                 "sha256": hashlib.sha256(payload).hexdigest(), "jf_path": "repo/asset.bin"}
-        seen_tokens = []
+        seen_auth = []
 
         class Response(io.BytesIO):
             def __enter__(self):
@@ -161,7 +161,8 @@ class HarnessTests(unittest.TestCase):
             def open(self, request, timeout):
                 self.assert_timeout = timeout
                 token = request.get_header("X-jfrog-art-api")
-                seen_tokens.append(token)
+                authorization = request.get_header("Authorization")
+                seen_auth.append((token, authorization))
                 if token == "primary":
                     raise urllib.error.HTTPError(request.full_url, 401, "Unauthorized", None, None)
                 return Response(payload)
@@ -175,7 +176,7 @@ class HarnessTests(unittest.TestCase):
                 mock.patch("assets.urllib.request.build_opener", return_value=Opener()):
             asset = get_asset(self.work, "fallback-test", spec)
 
-        self.assertEqual(seen_tokens, ["primary", "fallback"])
+        self.assertEqual(seen_auth, [("primary", None), (None, "Bearer fallback")])
         self.assertEqual(asset.read_bytes(), payload)
 
     def test_archive_traversal_rejected(self):

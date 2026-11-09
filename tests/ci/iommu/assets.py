@@ -40,16 +40,22 @@ def get_asset(work, name, spec, assets_dir=None):
         relative = spec["jf_path"]
         if relative.startswith("/") or ".." in Path(relative).parts or ":" in relative:
             raise ValueError("JF path must be repository-relative")
-        tokens = tuple(dict.fromkeys(
-            token for variable in ("IOMMU_CI_JF_TOKEN", "IOMMU_CI_JF_TOKEN_2")
-            if (token := os.environ.get(variable))
-        ))
+        candidates = []
+        for label, variable, header in (
+            ("primary", "IOMMU_CI_JF_TOKEN", "X-JFrog-Art-Api"),
+            ("fallback", "IOMMU_CI_JF_TOKEN_2", "Authorization"),
+        ):
+            if token := os.environ.get(variable):
+                value = "Bearer " + token if header == "Authorization" else token
+                candidate = (label, {header: value})
+                if candidate not in candidates:
+                    candidates.append(candidate)
         url = base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/")
         cached.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=cached.parent, prefix="download-")
         os.close(fd)
-        for index, token in enumerate(tokens or (None,)):
-            headers = {"X-JFrog-Art-Api": token} if token else {}
+        auth_failures = []
+        for index, (label, headers) in enumerate(candidates or (("anonymous", {}),)):
             request = urllib.request.Request(url, headers=headers)
             try:
                 import signal
@@ -73,8 +79,11 @@ def get_asset(work, name, spec, assets_dir=None):
                 Path(temporary).replace(cached)
                 break
             except urllib.error.HTTPError as exc:
-                if exc.code in (401, 403) and index + 1 < len(tokens):
-                    continue
+                if exc.code in (401, 403):
+                    auth_failures.append(f"{label}=HTTP {exc.code}")
+                    if index + 1 < len(candidates):
+                        continue
+                    raise RuntimeError("JF download authentication failed (" + ", ".join(auth_failures) + ")") from None
                 raise RuntimeError(f"JF download returned HTTP {exc.code}") from None
             except urllib.error.URLError:
                 raise RuntimeError("JF download failed; check network and credentials") from None

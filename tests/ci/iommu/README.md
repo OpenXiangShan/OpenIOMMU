@@ -84,7 +84,7 @@ GitHub 使用内网 self-hosted runner，labels 为
 | --- | --- |
 | `IOMMU_CI_JF_BASE_URL` | 共用 JFrog 的 `/artifactory` URL |
 | `IOMMU_CI_JF_TOKEN` | 只读下载 token；GitLab masked variable / GitHub secret |
-| `IOMMU_CI_JF_TOKEN_2` | 可选备用下载 token；GitHub Actions 将 `IOMMU_CI_JF_WRITE_TOKEN` Secret 映射到此变量 |
+| `IOMMU_CI_JF_TOKEN_2` | 可选备用下载 token；GitHub Actions 将 `IOMMU_CI_JF_WRITE_TOKEN` Secret 映射到此变量，并使用 Bearer 认证 |
 | `VCS_ENV` | runner 的 VCS 环境脚本；也可由主机提供 VCS_HOME/VERDI_HOME |
 | `IOMMU_CI_CACHE` | 可选下载缓存 |
 | `IOMMU_CI_VCS_LOCK` | 共用主机锁，默认 `/tmp/openiommu-ci-vcs.lock` |

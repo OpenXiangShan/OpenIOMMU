@@ -25,6 +25,7 @@ env:
   IOMMU_CI_JOBS: '8'
   IOMMU_CI_JF_BASE_URL: ${{ vars.IOMMU_CI_JF_BASE_URL }}
   IOMMU_CI_JF_TOKEN: ${{ secrets.IOMMU_CI_JF_TOKEN }}
+  IOMMU_CI_VERIBLE_DIR: ${{ vars.IOMMU_CI_VERIBLE_DIR || '/nfs/share/unitychip/bin' }}
   VCS_ENV: ${{ vars.VCS_ENV }}
 
 jobs:

@@ -132,8 +132,11 @@ def vcs_environment():
         env = dict(item.decode().split("=", 1) for item in result.stdout.split(b"\0") if item)
     if not env.get("VCS_HOME") or not env.get("VERDI_HOME"):
         raise ValueError("set VCS_ENV or VCS_HOME/VERDI_HOME in the runner environment")
-    env["PATH"] = env["VCS_HOME"] + "/bin:" + env.get("PATH", "")
+    path_entries = [env["VCS_HOME"] + "/bin", env.get("PATH", "")]
     env["LD_LIBRARY_PATH"] = env["VCS_HOME"] + "/linux64/lib:" + env.get("LD_LIBRARY_PATH", "")
+    if verible_dir := env.get("IOMMU_CI_VERIBLE_DIR"):
+        path_entries.insert(0, verible_dir)
+    env["PATH"] = os.pathsep.join(path for path in path_entries if path)
     env.pop("LD_PRELOAD", None)
     env.pop("IO_SYSTEM_IOMMU_RTL_HW_BYPASS", None)
     return env

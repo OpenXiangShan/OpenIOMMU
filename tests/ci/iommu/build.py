@@ -33,7 +33,8 @@ def doctor(work, pipeline, assets_dir=None):
     tools = ["git", "python3"]
     env = dict(os.environ)
     if pipeline["selected"]:
-        tools += ["cc", "c++", "cmake", "make", "ninja", "pkg-config", "dtc", "ldd"]
+        tools += ["cc", "c++", "cmake", "make", "ninja", "pkg-config", "dtc", "ldd",
+                  "verible-verilog-syntax"]
         try:
             env = vcs_environment()
         except (ValueError, subprocess.CalledProcessError) as exc:
@@ -50,8 +51,9 @@ def doctor(work, pipeline, assets_dir=None):
         except ImportError:
             errors.append("install requirements.txt (pexpect)")
     for tool in tools:
-        if not shutil.which(tool):
-            errors.append("missing executable: " + tool)
+        if not shutil.which(tool, path=env.get("PATH")):
+            hint = " (set IOMMU_CI_VERIBLE_DIR)" if tool == "verible-verilog-syntax" else ""
+            errors.append("missing executable: " + tool + hint)
     if sys.version_info < (3, 12):
         errors.append("Python >= 3.12 required (safe archive extraction)")
     if platform.system() != "Linux" or platform.machine() != "x86_64":

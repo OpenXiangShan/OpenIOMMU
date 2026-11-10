@@ -8,6 +8,11 @@ jobs=${4:-8}
 [[ ! -e "$picker_out" ]] || { echo "picker output must be new" >&2; exit 1; }
 mkdir -p "$(dirname "$picker_out")"
 
+if ! command -v verible-verilog-syntax >/dev/null 2>&1; then
+    echo "verible-verilog-syntax is required by Picker; set IOMMU_CI_VERIBLE_DIR or runner PATH" >&2
+    exit 127
+fi
+
 "$sdk/bin/picker" export "$rtl_root/iommu_wrap.sv" \
     --sname iommu_wrap --tdir "$picker_out" --lang cpp --sim vcs \
     --autobuild false --cp_lib false -e \

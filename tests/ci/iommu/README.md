@@ -20,7 +20,8 @@ QEMU 的 native wrap archives 及 packagefiles 也经过 revision/SHA256 校验�
 
 Picker/XSPComm 从 JFrog 获取完整、固定的 Linux x86_64 SDK。包内包括 picker、
 模板、头文件、libxspcomm、许可证及 provenance；coroutine ABI 一致。
-工具路径全部显式传递，不从系统 PATH 拼凑组件。当前包来自 XSV 固定 commit
+Picker/XSPComm 工具路径全部显式传递，不从系统 PATH 拼凑组件。Picker 解析
+RTL 所需的 Verible 由 runner 的 `IOMMU_CI_VERIBLE_DIR` 提供。当前包来自 XSV 固定 commit
 `0221570d2434062d7ea869ef13548520e35ed409` 中的 picker/xcomm 源码。
 `package_tools.py` 记录实际源码 archive 的 SHA256、compiler 和模板适配。
 VCS/Verdi 及 license 由 runner 提供，不在公开代码或工具包内分发。
@@ -37,7 +38,7 @@ Linux 启动和 guest 命令的串口输出实时转发到两平台 job 页面�
 ## 本地运行
 
 需要 Linux x86_64、Python 3.12+、C/C++20 compiler、CMake、Make、Ninja、Git、
-pkg-config、dtc、GLib/pixman/zlib 开发包、libnuma 开发包和 VCS/Verdi。
+pkg-config、dtc、Verible、GLib/pixman/zlib 开发包、libnuma 开发包和 VCS/Verdi。
 安装 `requirements.txt` 到 runner 的独立 Python 环境；CI 不自动修改主机环境。
 
 ```bash
@@ -85,6 +86,7 @@ GitHub 使用内网 self-hosted runner，labels 为
 | `IOMMU_CI_JF_BASE_URL` | 共用 JFrog 的 `/artifactory` URL |
 | `IOMMU_CI_JF_TOKEN` | 只读下载 access token；GitLab masked variable / GitHub secret，统一使用 Bearer 认证 |
 | `VCS_ENV` | runner 的 VCS 环境脚本；也可由主机提供 VCS_HOME/VERDI_HOME |
+| `IOMMU_CI_VERIBLE_DIR` | `verible-verilog-syntax` 所在目录；默认使用共享工具目录 |
 | `IOMMU_CI_CACHE` | 可选下载缓存 |
 | `IOMMU_CI_VCS_LOCK` | 共用主机锁，默认 `/tmp/openiommu-ci-vcs.lock` |
 | `IOMMU_CI_LOCK_TIMEOUT` | 等待主机锁的秒数，默认 1800 |

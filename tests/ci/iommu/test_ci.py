@@ -16,7 +16,7 @@ import urllib.error
 from assets import check_asset_access, extract, get_asset, verify
 from build import resolve_dependency, verify_bundle
 from ci import all_cases, check_runtime_output, collect, report, select_cases
-from common import run_logged, sha256, write_json
+from common import run_logged, sha256, vcs_environment, write_json
 from linux_case import check_boot_uart, check_uart, normalize_console
 
 
@@ -143,6 +143,19 @@ class HarnessTests(unittest.TestCase):
         asset.write_bytes(b"test")
         with self.assertRaises(ValueError):
             verify(asset, {"size": 4, "sha256": "0" * 64})
+
+    def test_verible_directory_is_added_to_vcs_path(self):
+        verible_dir = self.work / "verible/bin"
+        environment = {
+            "PATH": "/usr/bin",
+            "VCS_HOME": "/opt/vcs",
+            "VERDI_HOME": "/opt/verdi",
+            "IOMMU_CI_VERIBLE_DIR": str(verible_dir),
+        }
+        with mock.patch.dict(os.environ, environment, clear=True):
+            resolved = vcs_environment()
+        self.assertEqual(resolved["PATH"].split(os.pathsep)[:3],
+                         [str(verible_dir), "/opt/vcs/bin", "/usr/bin"])
 
     def test_jf_asset_download_uses_single_bearer_token(self):
         payload = b"test"

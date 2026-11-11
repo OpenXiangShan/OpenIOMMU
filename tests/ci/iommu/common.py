@@ -1,6 +1,4 @@
 """Shared, platform-independent CI primitives."""
-import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -102,41 +100,11 @@ def run_logged(argv, log, cwd=None, env=None, timeout=3600, check=True):
     return code
 
 
-@contextlib.contextmanager
-def vcs_lock():
-    lock = Path(os.environ.get("IOMMU_CI_VCS_LOCK", "/tmp/openiommu-ci-vcs.lock"))
-    with lock.open("a") as stream:
-        deadline = time.monotonic() + int(os.environ.get("IOMMU_CI_LOCK_TIMEOUT", "1800"))
-        while True:
-            try:
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("VCS host lock wait timed out")
-                time.sleep(0.2)
-        try:
-            yield
-        finally:
-            fcntl.flock(stream, fcntl.LOCK_UN)
-
-
-def vcs_environment():
+def simulator_environment():
+    """Use the runner environment without loading a licensed simulator."""
     env = dict(os.environ)
-    if env.get("VCS_ENV"):
-        # Pass the file as an argument, never interpolate its contents or print
-        # the resulting environment (it contains license configuration).
-        result = subprocess.run(
-            ["bash", "-c", 'set -e; set +u; source "$1" >&2; env -0',
-             "vcs-env", env["VCS_ENV"]], capture_output=True, check=True)
-        env = dict(item.decode().split("=", 1) for item in result.stdout.split(b"\0") if item)
-    if not env.get("VCS_HOME") or not env.get("VERDI_HOME"):
-        raise ValueError("set VCS_ENV or VCS_HOME/VERDI_HOME in the runner environment")
-    path_entries = [env["VCS_HOME"] + "/bin", env.get("PATH", "")]
-    env["LD_LIBRARY_PATH"] = env["VCS_HOME"] + "/linux64/lib:" + env.get("LD_LIBRARY_PATH", "")
     if verible_dir := env.get("IOMMU_CI_VERIBLE_DIR"):
-        path_entries.insert(0, verible_dir)
-    env["PATH"] = os.pathsep.join(path for path in path_entries if path)
+        env["PATH"] = os.pathsep.join(path for path in (verible_dir, env.get("PATH", "")) if path)
     env.pop("LD_PRELOAD", None)
     env.pop("IO_SYSTEM_IOMMU_RTL_HW_BYPASS", None)
     return env

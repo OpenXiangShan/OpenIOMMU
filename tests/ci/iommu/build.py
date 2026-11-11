@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 from assets import check_asset_access, extract, get_asset
-from common import HERE, SOURCE, read_json, run_logged, sha256, source_identity, vcs_environment, vcs_lock, write_json
+from common import HERE, SOURCE, read_json, run_logged, sha256, source_identity, simulator_environment, write_json
 
 
 def resolve_dependency(spec, log):
@@ -31,18 +31,24 @@ def resolve_dependency(spec, log):
 def doctor(work, pipeline, assets_dir=None):
     errors = []
     tools = ["git", "python3"]
-    env = dict(os.environ)
+    verilator = {}
+    env = simulator_environment()
     if pipeline["selected"]:
         tools += ["cc", "c++", "cmake", "make", "ninja", "pkg-config", "dtc", "ldd",
                   "verible-verilog-syntax"]
-        try:
-            env = vcs_environment()
-        except (ValueError, subprocess.CalledProcessError) as exc:
-            errors.append(str(exc))
-        if not shutil.which("vcs", path=env.get("PATH")):
-            errors.append("VCS is unavailable")
-        if not Path(env.get("VCS_HOME", "/missing") + "/include/svdpi.h").is_file():
-            errors.append("missing VCS svdpi.h")
+        tools.append("verilator")
+        if shutil.which("verilator", path=env.get("PATH")):
+            try:
+                root = subprocess.check_output(
+                    ["verilator", "--getenv", "VERILATOR_ROOT"], text=True, timeout=30,
+                    env=env).strip()
+                verilator = {"executable": shutil.which("verilator", path=env.get("PATH")), "root": root,
+                             "version": subprocess.check_output(
+                                 ["verilator", "--version"], text=True, timeout=30, env=env).strip()}
+                if not root or not (Path(root) / "include/vltstd/svdpi.h").is_file():
+                    errors.append("missing Verilator svdpi.h")
+            except (OSError, subprocess.SubprocessError) as exc:
+                errors.append("cannot query Verilator: " + str(exc))
         for dependency in ("glib-2.0", "pixman-1", "zlib"):
             if subprocess.run(["pkg-config", "--exists", dependency], check=False).returncode:
                 errors.append("missing development package: " + dependency)
@@ -69,7 +75,7 @@ def doctor(work, pipeline, assets_dir=None):
             errors.append(str(exc))
             jfrog_access = {"checked": True, "status": None, "error": str(exc)}
     evidence = {"errors": errors, "python": sys.version,
-                "platform": platform.platform(), "vcs_home": env.get("VCS_HOME"),
+                "platform": platform.platform(), "verilator": verilator,
                 "free_bytes": shutil.disk_usage(work).free, "jfrog_access": jfrog_access}
     write_json(work / "doctor.json", evidence)
     if errors:
@@ -104,13 +110,16 @@ def build(work, pipeline, jobs, assets_dir=None):
         overlays = qemu / "subprojects/packagefiles" / name
         if overlays.is_dir():
             shutil.copytree(overlays, qemu / "subprojects" / name, dirs_exist_ok=True)
-    env = vcs_environment()
+    env = simulator_environment()
     env["PATH"] = str(sdk / "bin") + ":" + env["PATH"]
-    env["LD_LIBRARY_PATH"] = str(sdk / "share/picker/lib") + ":" + env["LD_LIBRARY_PATH"]
+    env["LD_LIBRARY_PATH"] = str(sdk / "share/picker/lib") + ":" + env.get("LD_LIBRARY_PATH", "")
     picker = work / "picker-build"
-    with vcs_lock():
-        run_logged(["bash", str(HERE / "build_picker.sh"), str(SOURCE), str(picker), str(sdk), str(jobs)],
-                   work / "logs/picker-build.log", env=env, timeout=3600)
+    model_threads = int(os.environ.get("IOMMU_CI_MODEL_THREADS", "8"))
+    if model_threads < 1:
+        raise ValueError("IOMMU_CI_MODEL_THREADS must be positive")
+    run_logged(["bash", str(HERE / "build_picker.sh"), str(SOURCE), str(picker), str(sdk),
+                str(jobs), str(model_threads)],
+               work / "logs/picker-build.log", env=env, timeout=5400)
     io_system = qemu / "third_party/io-system-lib"
     api_output = work / "iommu-api-output"
     make_args = ["make", "-C", str(io_system), "iommu-rtl-api",
@@ -118,7 +127,7 @@ def build(work, pipeline, jobs, assets_dir=None):
                  "IO_SYSTEM_IOMMU_RTL=1", "IOMMU_RTL_PICKER_OUT=" + str(picker),
                  "PICKER_XSPCOMM_INCLUDE=" + str(sdk / "share/picker/include"),
                  "PICKER_XSPCOMM_LIB=" + str(sdk / "share/picker/lib/libxspcomm.so"),
-                 "VCS_HOME=" + env["VCS_HOME"], "-j" + str(jobs)]
+                 "IOMMU_RTL_SIMULATOR=verilator", "-j" + str(jobs)]
     run_logged(make_args, work / "logs/iommu-api-build.log", env=env)
     bundle = work / "bundle"
     bundle.mkdir()
@@ -137,7 +146,8 @@ def build(work, pipeline, jobs, assets_dir=None):
                  "--disable-download", "--disable-gtk", "--disable-sdl", "--disable-vnc",
                  "--disable-guest-agent", "--disable-tools", "--disable-rust",
                  "--enable-my-virtio", "--enable-io-system", "--disable-io-system-rtl-system",
-                 "--enable-io-system-iommu-rtl", "--io-system-iommu-picker-out=" + str(picker),
+                 "--enable-io-system-iommu-rtl", "--io-system-iommu-simulator=verilator",
+                 "--io-system-iommu-picker-out=" + str(picker),
                  "--io-system-picker=" + str(sdk / "bin/picker"),
                  "--io-system-picker-template=" + str(sdk / "share/picker/template"),
                  "--io-system-picker-xspcomm-include=" + str(sdk / "share/picker/include"),
@@ -157,7 +167,9 @@ def build(work, pipeline, jobs, assets_dir=None):
     write_json(bundle / "build.json", {
         "run_id": pipeline["run_id"], "source": pipeline["source"],
         "dependencies": pipeline["dependencies"], "tools": tool_info,
-        "vcs_home": env["VCS_HOME"],
+        "simulator": "verilator", "model_threads": model_threads, "coverage": False,
+        "verilator_version": subprocess.check_output(
+            ["verilator", "--version"], text=True, env=env, timeout=30).strip(),
         "files": {str(p.relative_to(bundle)): sha256(p) for p in sorted(bundle.rglob("*")) if p.is_file()},
     })
 
@@ -177,14 +189,16 @@ def verify_bundle(work, pipeline):
 
 
 def runtime_env(bundle):
-    env = vcs_environment()
+    env = simulator_environment()
     info = read_json(bundle / "build.json")
-    if env["VCS_HOME"] != info["vcs_home"]:
-        raise ValueError("runtime VCS installation differs from the build runner")
     libs = bundle / "iommu"
-    env["LD_LIBRARY_PATH"] = str(libs) + ":" + env["LD_LIBRARY_PATH"]
+    if info.get("simulator") != "verilator" or (libs / ".simulator").read_text().strip() != "verilator":
+        raise ValueError("runtime bundle is not a Verilator build")
+    env["LD_LIBRARY_PATH"] = str(libs) + ":" + env.get("LD_LIBRARY_PATH", "")
     env["LD_PRELOAD"] = ":".join(str(libs / name) for name in
-                                ("libUTiommu_wrap.so", "libDPIiommu_wrap.so", "libxspcomm.so"))
+                                ("libUTiommu_wrap.so", "libxspcomm.so"))
+    env["IO_SYSTEM_IOMMU_RTL_NO_WAVE"] = "1"
+    env.pop("IO_SYSTEM_IOMMU_RTL_WAVEFORM", None)
     env["IO_SYSTEM_IOMMU_RTL_API_SO"] = str(libs / "libiommu_api.so")
     env.pop("IO_SYSTEM_IOMMU_TRACE", None)
     env.pop("IO_SYSTEM_IOMMU_TRACE_TXN_ID", None)

@@ -23,10 +23,10 @@ concurrency:
 env:
   IOMMU_CI_WORK: .ci-work/pipeline
   IOMMU_CI_JOBS: '8'
+  IOMMU_CI_MODEL_THREADS: '8'
   IOMMU_CI_JF_BASE_URL: ${{ vars.IOMMU_CI_JF_BASE_URL }}
   IOMMU_CI_JF_TOKEN: ${{ secrets.IOMMU_CI_JF_TOKEN }}
   IOMMU_CI_VERIBLE_DIR: ${{ vars.IOMMU_CI_VERIBLE_DIR || '/nfs/share/unitychip/bin' }}
-  VCS_ENV: ${{ vars.VCS_ENV }}
 
 jobs:
   # Fork PRs never execute automatically on a privileged internal runner.
@@ -78,7 +78,7 @@ jobs:
           path: .ci-work/pipeline
       - run: python3 tests/ci/iommu/ci.py doctor --work-dir "$IOMMU_CI_WORK"
       - run: python3 tests/ci/iommu/ci.py build --work-dir "$IOMMU_CI_WORK" --jobs "$IOMMU_CI_JOBS"
-      # tar preserves executable modes and VCS directories across Actions jobs.
+      # tar preserves executable modes and runtime libraries across Actions jobs.
       - if: always()
         run: python3 tests/ci/iommu/artifacts.py pack --work-dir "$IOMMU_CI_WORK" --archive .ci-work/build-evidence.tar.gz
       - uses: actions/upload-artifact@v4

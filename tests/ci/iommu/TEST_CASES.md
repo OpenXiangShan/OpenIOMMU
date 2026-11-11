@@ -1,6 +1,6 @@
 # 首批 RTL IOMMU 门禁
 
-所有用例通过本次构建的 API/UT/DPI 库运行真实 OpenIOMMU RTL。
+所有用例通过本次构建的 Verilator API/UT 库运行真实 OpenIOMMU RTL。
 stub/refmodel smoke 和全 SoC RTL-system 不属于这些用例。
 
 | ID | 成功断言 |
@@ -19,7 +19,7 @@ stub/refmodel smoke 和全 SoC RTL-system 不属于这些用例。
 APB 用例要求只读 capability 写返回失败、寄存器值不变，并准确记录一次
 `addr=0x00000000 data=0xffffffff` PSLVERR；其他 APB 错误仍阻塞门禁。
 
-每个用例在新进程中创建 VCS 实例，避免不支持的重复初始化；不以 `$finish`
+每个用例在新进程中创建独立 Verilator 实例，隔离模型状态；不以 `$finish`
 提前结束来冒充通过。运行器要求退出码 0 和独立的本次 nonce 成功行同时成立。
 Linux guest 关闭 echo 后读取命令响应；目标文件在卸载/重新挂载后再次比较。
 `qemu_to_iosystem` 没有 guest poweroff device；全部断言和最终卸载完成后通过
@@ -27,7 +27,7 @@ QMP `quit` 收尾，要求退出码 0。提前退出或必须强杀的进程不�
 
 Linux 启动前通过 QEMU generic loader 向 `0x311f1000` 写 `0x80000000`，显式
 关闭 RTL 复位默认开启的 hardware bypass；mount 前和 I/O 后通过 QMP 读回。
-TCG 使用 `-icount shift=3,sleep=off`，避免 VCS 阻塞宿主时间导致 guest RCU/timer
+TCG 使用 `-icount shift=3,sleep=off`，避免 RTL 仿真消耗宿主时间导致 guest RCU/timer
 误报；实际 deadlock 仍由外层 wall-clock deadline 阻塞，RCU stall 不豁免。
 当前固定 kernel 使用 writeq 写 32 位 BOSC sync pulse，产生最多两条
 `APB write PSLVERR: addr=0x000002b4 data=0x00000000` 上半字诊断。

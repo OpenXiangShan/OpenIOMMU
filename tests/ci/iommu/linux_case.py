@@ -121,7 +121,7 @@ def run(bundle, output, nonce):
             "-drive", "file=" + str(output / "nvme.img") + ",format=raw,if=none,id=nvme0",
             "-device", "nvme,drive=nvme0,serial=openiommu-ci,bus=qti-pcie"]
     write_json(output / "qemu-command.json", {"argv": argv})
-    deadline = time.monotonic() + 1100
+    deadline = time.monotonic() + 2300
     uart = output / "uart.log"
     child = None
     try:
@@ -130,7 +130,7 @@ def run(bundle, output, nonce):
                                   encoding="utf-8", codec_errors="replace", echo=False)
             child.logfile_read = UartLog(log)
             prompt = r"\[root@[^\r\n]+\]# "
-            child.expect(prompt, timeout=480)
+            child.expect(prompt, timeout=1200)
             diagnostics = check_boot_uart(child.before)
             write_json(output / "boot-diagnostics.json", {"reserved_sync_upper_word": diagnostics})
             steps = []

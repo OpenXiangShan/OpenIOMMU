@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 
 from assets import check_asset_access
 from build import build, doctor, resolve_dependency, runtime_env, verify_bundle
-from common import HERE, SOURCE, read_json, run_logged, sha256, source_identity, vcs_lock, write_json
+from common import HERE, SOURCE, read_json, run_logged, sha256, source_identity, write_json
 from linux_case import check_boot_uart, normalize_console
 
 
@@ -154,9 +154,8 @@ def execute(work, pipeline, group=None, requested=None):
         result = {"id": case["id"], "run_id": pipeline["run_id"], "nonce": nonce,
                   "source": pipeline["source"], "status": "FAIL"}
         try:
-            with vcs_lock():
-                code = run_logged(command, output / "driver.log", cwd=output, env=env,
-                                  timeout=case["timeout"], check=False)
+            code = run_logged(command, output / "driver.log", cwd=output, env=env,
+                              timeout=case["timeout"], check=False)
             text = (output / "driver.log").read_text(errors="replace")
             marker = "IOMMU_CI_PASS:" + case["id"] + ":" + nonce
             if code or marker not in text.splitlines():

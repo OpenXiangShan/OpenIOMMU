@@ -1,11 +1,11 @@
 """Failure handling/identity tests; never claim these validate RTL."""
-import io
 import contextlib
 import hashlib
+import io
 import os
 from pathlib import Path
-import sys
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -14,9 +14,9 @@ from unittest import mock
 import urllib.error
 
 from assets import check_asset_access, extract, get_asset, verify
-from build import resolve_dependency, verify_bundle
+from build import resolve_dependency, runtime_env, verify_bundle
 from ci import all_cases, check_runtime_output, collect, report, select_cases
-from common import run_logged, sha256, vcs_environment, write_json
+from common import run_logged, sha256, simulator_environment, write_json
 from linux_case import check_boot_uart, check_uart, normalize_console
 
 
@@ -138,24 +138,60 @@ class HarnessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_bundle(self.work, self.pipeline)
 
+    def runtime_bundle(self, simulator="verilator"):
+        bundle = self.work / "relocated-bundle"
+        libs = bundle / "iommu"
+        libs.mkdir(parents=True)
+        (libs / ".simulator").write_text(simulator + "\n")
+        write_json(bundle / "build.json", {"simulator": simulator})
+        return bundle
+
+    def test_verilator_runtime_without_simulator_or_license_installation(self):
+        bundle = self.runtime_bundle()
+        # Runtime jobs only need the compiled bundle. A stale runner VCS_ENV
+        # must never be sourced, and inherited preload/bypass must not leak in.
+        inherited = {"PATH": "/missing", "VCS_ENV": "/missing/vcs-env",
+                     "LD_PRELOAD": "/old/libDPIiommu_wrap.so",
+                     "IO_SYSTEM_IOMMU_RTL_HW_BYPASS": "1",
+                     "IO_SYSTEM_IOMMU_TRACE": "1", "IO_SYSTEM_IOMMU_TRACE_TXN_ID": "7",
+                     "IO_SYSTEM_IOMMU_RTL_WAVEFORM": "/old/wave.fst"}
+        with mock.patch.dict(os.environ, inherited, clear=True), mock.patch(
+                "subprocess.run", side_effect=AssertionError("runtime invoked a tool")):
+            env = runtime_env(bundle)
+        self.assertEqual(env["IO_SYSTEM_IOMMU_RTL_API_SO"], str(bundle / "iommu/libiommu_api.so"))
+        self.assertEqual(env["LD_PRELOAD"].split(":"), [
+            str(bundle / "iommu/libUTiommu_wrap.so"), str(bundle / "iommu/libxspcomm.so")])
+        self.assertEqual(env["IO_SYSTEM_IOMMU_RTL_NO_WAVE"], "1")
+        for name in ("IO_SYSTEM_IOMMU_RTL_HW_BYPASS", "IO_SYSTEM_IOMMU_TRACE",
+                     "IO_SYSTEM_IOMMU_TRACE_TXN_ID", "IO_SYSTEM_IOMMU_RTL_WAVEFORM"):
+            self.assertNotIn(name, env)
+
+    def test_runtime_rejects_vcs_bundle(self):
+        with self.assertRaisesRegex(ValueError, "not a Verilator build"):
+            runtime_env(self.runtime_bundle("vcs"))
+
+    def test_runtime_rejects_conflicting_backend_marker(self):
+        bundle = self.runtime_bundle()
+        (bundle / "iommu/.simulator").write_text("vcs\n")
+        with self.assertRaisesRegex(ValueError, "not a Verilator build"):
+            runtime_env(bundle)
+
     def test_bad_asset_hash_rejected(self):
         asset = self.work / "asset"
         asset.write_bytes(b"test")
         with self.assertRaises(ValueError):
             verify(asset, {"size": 4, "sha256": "0" * 64})
 
-    def test_verible_directory_is_added_to_vcs_path(self):
+    def test_verible_directory_is_added_to_simulator_path(self):
         verible_dir = self.work / "verible/bin"
         environment = {
             "PATH": "/usr/bin",
-            "VCS_HOME": "/opt/vcs",
-            "VERDI_HOME": "/opt/verdi",
             "IOMMU_CI_VERIBLE_DIR": str(verible_dir),
         }
         with mock.patch.dict(os.environ, environment, clear=True):
-            resolved = vcs_environment()
-        self.assertEqual(resolved["PATH"].split(os.pathsep)[:3],
-                         [str(verible_dir), "/opt/vcs/bin", "/usr/bin"])
+            resolved = simulator_environment()
+        self.assertEqual(resolved["PATH"].split(os.pathsep),
+                         [str(verible_dir), "/usr/bin"])
 
     def test_jf_asset_download_uses_single_bearer_token(self):
         payload = b"test"

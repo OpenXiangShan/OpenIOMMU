@@ -15,6 +15,7 @@ variables:
   GIT_DEPTH: "0"
   IOMMU_CI_WORK: .ci-work/pipeline
   IOMMU_CI_JOBS: "8"
+  IOMMU_CI_MODEL_THREADS: "8"
   IOMMU_CI_RUNNER_TAG: bosc-ci
   IOMMU_CI_LIVE_LOG_KIB: "256"
   IOMMU_CI_VERIBLE_DIR: "/nfs/share/unitychip/bin"

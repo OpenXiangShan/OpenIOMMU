@@ -7,6 +7,6 @@
     {"id": "rtl-dma-translate", "group": "rtl", "timeout": 180},
     {"id": "rtl-dma-fault", "group": "rtl", "timeout": 180},
     {"id": "rtl-invalidate", "group": "rtl", "timeout": 180},
-    {"id": "qemu-linux-nvme-ext4", "group": "linux", "timeout": 1200}
+    {"id": "qemu-linux-nvme-ext4", "group": "linux", "timeout": 2400}
   ]
 }

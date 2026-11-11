@@ -342,7 +342,7 @@ end
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
         cq_on <= 1'b0;
-    else if (!cq_en && (cq_cs == IDLE))
+    else if (!cq_en && !cq_en_d && (cq_cs == IDLE))
         cq_on <= 1'b0;
     else if (cq_en && !cq_en_d)
         cq_on <= 1'b1;

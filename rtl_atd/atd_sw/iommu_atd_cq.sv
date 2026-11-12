@@ -38,6 +38,7 @@ module iommu_atd_cq #(
     input                           cq_atd_fifo_full_i,
 
     output                          cq_atd_fence_valid_o,
+    output                          cq_ats_sync_req_o,
     input                           cq_atd_fence_ready_i,
 
     //to atd_tc to acd
@@ -236,6 +237,8 @@ module iommu_atd_cq #(
     logic                       cq_iofence_atd_end;
     logic                       cq_iofence_acd_end;
     logic                       cq_iofence_atc_end;
+    logic                       cq_ats_inval_pending;
+    logic                       cq_ats_sync_sent;
     logic                       cq_sync_acd_end;
     logic                       cq_sync_end;
 
@@ -550,6 +553,28 @@ end
 assign cq_atd_fifo_wen_o = cq_fifo_wen;
 assign cq_atd_fifo_din_o = cq_fifo_wdata;
 assign cq_atd_fence_valid_o = cq_iofence_atd_valid;
+
+// ATS sync request: once per IOFENCE, only if an ATS.INVAL was sent since the last IOFENCE
+assign cq_ats_sync_req_o = cq_iofence_atd_valid & cq_ats_inval_pending & ~cq_ats_sync_sent;
+always@(posedge iommu_clk or negedge iommu_rstn) begin
+    if (!iommu_rstn)
+        cq_ats_sync_sent <= 1'b0;
+    else if (cq_iofence_end)
+        cq_ats_sync_sent <= 1'b0;
+    else if (cq_ats_sync_req_o)
+        cq_ats_sync_sent <= 1'b1;
+end
+
+//ATS.INVAL (opcode 4, func3 0) sent since the last IOFENCE
+always@(posedge iommu_clk or negedge iommu_rstn) begin
+    if (!iommu_rstn)
+        cq_ats_inval_pending <= 1'b0;
+    else if (cq_iofence_end)
+        cq_ats_inval_pending <= 1'b0;
+    else if (cq_fifo_wen && (cq_fifo_wdata[6:0] == 7'd4) && (cq_fifo_wdata[9:7] == 3'd0))
+        cq_ats_inval_pending <= 1'b1;
+end
+
 assign cq_acd_fifo_wen_o = cq_fifo_wen;
 assign cq_acd_fifo_din_o = cq_fifo_wdata;
 
@@ -660,8 +685,8 @@ always@(posedge iommu_clk or negedge iommu_rstn) begin
         cq_iofence_end <= 1'b0;
     else if (cq_iofence_end)
         cq_iofence_end <= 1'b0;
-//    else if (cq_iofence_atd_end && cq_iofence_acd_end && cq_iofence_atc_end)
-    else if (cq_iofence_atd_end && cq_iofence_acd_end)
+    else if (cq_iofence_atd_end && cq_iofence_acd_end &&
+             (cq_iofence_atc_end || !cq_ats_inval_pending))
         cq_iofence_end <= 1'b1;
 end
 

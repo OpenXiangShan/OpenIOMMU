@@ -108,6 +108,13 @@ module iommu_atd_t2c
     logic                       atd_t2c_tlast;
     logic   [63:0]              atd_t2c_tdata;
     logic   [5:0]               cq_req_idx;
+    // number of ACD invalidation entries, one credit per CQ message in flight
+`ifdef CONFIG_RISCV_IOMMU_BOSC_V2_LITE
+    localparam int ACD_INV_CREDITS = 2;
+`else
+    localparam int ACD_INV_CREDITS = 4;
+`endif
+    logic   [2:0]               acd_inv_credit;
 
 ////////************************************************************************///////
 //cq invalid signals to acd
@@ -234,7 +241,7 @@ always@(*) begin
         IDLE:
             if ((!atd_t2c_connected_i) || (atd_t2c_connected_i && !atd_tc_connected))
                 t2c_ns = IDLE;
-            else if (!cq_wfifo_empty && atd_t2c_tready_i)
+            else if (!cq_wfifo_empty && atd_t2c_tready_i && (acd_inv_credit != 3'd0))
                 t2c_ns = T2C_CQ_RD;
             else if (!ptw_wfifo_empty && atd_t2c_tready_i)
                 t2c_ns = T2C_PTW_RD;
@@ -370,6 +377,18 @@ always@(*) begin
         atd_t2c_tlast = 1'b1;
     else
         atd_t2c_tlast = 1'b0;
+end
+
+//acd inv credit
+always@(posedge iommu_clk or negedge iommu_rstn) begin
+    if (!iommu_rstn)
+        acd_inv_credit <= 3'(ACD_INV_CREDITS);
+    else if (!atd_t2c_connected_i)
+        acd_inv_credit <= 3'(ACD_INV_CREDITS);
+    else if (cq_wfifo_ren && !atd_t2c_cq_ack_i)
+        acd_inv_credit <= acd_inv_credit - 3'd1;
+    else if (!cq_wfifo_ren && atd_t2c_cq_ack_i)
+        acd_inv_credit <= acd_inv_credit + 3'd1;
 end
 
 always@(posedge iommu_clk or negedge iommu_rstn) begin

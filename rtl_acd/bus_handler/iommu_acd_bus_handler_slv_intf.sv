@@ -110,6 +110,7 @@ module iommu_acd_bus_handler_slv_intf import iommu_acd_pkg::*; #( //{{{
     logic [BUS_INFLY_TOKEN_NUM-1:0]     token_pool, nxt_token_pool;             // token occpupied flag, each bit map to a token
     logic [BUS_INFLY_TOKEN_NUM-1:0]     token_rw_pool, nxt_token_rw_pool;       // token occpupide R/W flag, 0:READ 1:WRITE
     logic                               token_pool_empty;
+    logic                               out_arb_req;
 
     typedef struct packed {
         BUS_CH_AX_TYPE                  axpayld;
@@ -391,10 +392,12 @@ endgenerate
         /*input  logic [REQ_NUM-1:0]      */ .req_prior_i (arb_prior                                                        ),  // if w_hint (means still empty trans_queue entry for W) and no ar transaction, drive aw prior so that W can be granted
         /*input  DATA_TYPE [REQ_NUM-1:0]  */ .data_i      ({out_arb_data_i[1], out_arb_data_i[0]}                           ),
         /*output logic [REQ_NUM-1:0]      */ .gnt_o       (out_arb_gnt                                                      ),
-        /*output logic                    */ .req_o       (s2q_valid_o                                                      ),
+        /*output logic                    */ .req_o       (out_arb_req                                                      ),
         /*output DATA_TYPE                */ .data_o      (out_arb_data_o                                                   ),
         /*input  logic                    */ .gnt_i       (s2q_ready_i & (~token_pool_empty)                                )   // if all token is used with ongoing transaction, reverse pressure to input AW&AR
     );
+
+    assign s2q_valid_o              = out_arb_req & (~token_pool_empty)         ;   // same token gate as gnt_i, no transfer without a free token
 
     iommu_acd_bus_handler_4k_boundary_check #(                                                                                  // check if the transaction target address cross 4K boundary, drive fault if so
         .BUS_ADDR_WIDTH        (BUS_ADDR_WIDTH),

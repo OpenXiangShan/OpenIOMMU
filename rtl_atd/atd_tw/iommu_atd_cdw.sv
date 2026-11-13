@@ -1567,7 +1567,7 @@ always@(*) begin
         cdw_error_flag = 1'b1;
     //pc_fsc_miscfg
     else if ((cdw_cs == PC_L0_ENTRY) && cdw_rvalid_i && cdw_rlast_i &&
-                        (|pc_fsc.rsv || !(pc_fsc.mode inside {4'd0, 4'd8, 4'd9, 4'd10})))
+                        (|pc_fsc.rsv || (!sv57 && pc_fsc.mode == 4'd10) || !(pc_fsc.mode inside {4'd0, 4'd8, 4'd9, 4'd10})))
         cdw_error_flag = 1'b1;
     else
         cdw_error_flag = 1'b0;
@@ -1666,7 +1666,7 @@ always@(posedge iommu_clk or negedge iommu_rstn) begin
         cdw_cause_code <= PDT_ENTRY_MISCONFIGURED;
     //pc_fsc_miscfg
     else if ((cdw_cs == PC_L0_ENTRY) && cdw_rvalid_i && cdw_rlast_i &&
-                        (|pc_fsc.rsv || !(pc_fsc.mode inside {4'd0, 4'd8, 4'd9, 4'd10})))
+                        (|pc_fsc.rsv || (!sv57 && pc_fsc.mode == 4'd10) || !(pc_fsc.mode inside {4'd0, 4'd8, 4'd9, 4'd10})))
         cdw_cause_code <= PDT_ENTRY_MISCONFIGURED;
     else
         cdw_cause_code <= 'd0;
@@ -1674,8 +1674,7 @@ end
 
 
 assign cdw_fq_valid_o = cdw_fq_valid;
-assign cdw_fq_record_o = {64'd0,req_iova,12'd0,64'd0,req_did,trans_type,priv_lvl,req_pv,req_pid,cdw_cause_code};
-
+assign cdw_fq_record_o = {64'd0,req_iova,12'd0,64'd0,req_did,trans_type,(req_pv && priv_lvl),req_pv,(req_pv ?req_pid : 20'd0),cdw_cause_code};
 
 always@(*) begin
     //*****INB_DISALLOWED****//

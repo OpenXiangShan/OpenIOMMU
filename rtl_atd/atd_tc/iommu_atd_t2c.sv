@@ -38,6 +38,7 @@ module iommu_atd_t2c
     output                          ptw_wfifo_full_o,
 
     input                           atd_t2c_connected_i,
+    input                           atd_c2t_inv_tok_i,
     //inv_ack/fence_ack//used to check timeout
     input                           atd_t2c_cq_ack_i,
 
@@ -107,7 +108,7 @@ module iommu_atd_t2c
     logic                       atd_t2c_tvalid;
     logic                       atd_t2c_tlast;
     logic   [63:0]              atd_t2c_tdata;
-    logic   [5:0]               cq_req_idx;
+    logic   [3:0]               cq_req_idx;
 
 ////////************************************************************************///////
 //cq invalid signals to acd
@@ -234,7 +235,7 @@ always@(*) begin
         IDLE:
             if ((!atd_t2c_connected_i) || (atd_t2c_connected_i && !atd_tc_connected))
                 t2c_ns = IDLE;
-            else if (!cq_wfifo_empty && atd_t2c_tready_i)
+            else if (!cq_wfifo_empty && atd_t2c_tready_i && (cq_req_idx < ({1'b0,atd_c2t_inv_tok_i} + 5'd1)))
                 t2c_ns = T2C_CQ_RD;
             else if (!ptw_wfifo_empty && atd_t2c_tready_i)
                 t2c_ns = T2C_PTW_RD;
@@ -374,12 +375,14 @@ end
 
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
-        cq_req_idx <= 6'd0;
+        cq_req_idx <= 4'd0;
     else if (!atd_t2c_connected_i)
-        cq_req_idx <= 6'd0;
-    else if (atd_t2c_connected_i && atd_t2c_cq_ack_i)
+        cq_req_idx <= 4'd0;
+    else if (atd_t2c_cq_ack_i && cq_wfifo_ren)
+        cq_req_idx <= cq_req_idx; 
+    else if (atd_t2c_cq_ack_i)
         cq_req_idx <= cq_req_idx - 1'b1;
-    else if (atd_t2c_connected_i && cq_wfifo_ren)
+    else if (cq_wfifo_ren)
         cq_req_idx <= cq_req_idx + 1'b1;
     else
         cq_req_idx <= cq_req_idx;
@@ -392,9 +395,9 @@ always@(*) begin
     else if (!atd_t2c_connected_i)
         atd_t2c_tdata = 64'd0;
     else if (atd_t2c_connected_i && !atd_tc_connected)//rising_edge
-        atd_t2c_tdata = {12'd1,12'd1,32'd0,4'd1,4'd0};
+        atd_t2c_tdata = {12'd15,12'd31,32'd0,4'd1,4'd0};
     else if (t2c_cs == T2C_CQ_RD)
-        atd_t2c_tdata = {52'd0,cq_func,cq_req_idx,cq_msg_code};
+        atd_t2c_tdata = {54'd0,cq_func,cq_req_idx,cq_msg_code};
     else if ((t2c_cs == T2C_CQ_LAST) && t2c_cq_end)
         atd_t2c_tdata = cq_wfifo_rdata[127:64];
     else if (t2c_cs == T2C_CQ_LAST)

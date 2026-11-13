@@ -55,6 +55,8 @@ module iommu_tw_apb
     logic [11:0]            iommu_fctl;
     logic [47:0]            iommu_ddtp;
     logic [31:0]            iommu_iocntinh;
+    logic [63:0]            iommu_iohpmcycles;
+    logic                   atd_iocntinh;
 
     logic                   iommu_ipsr_pmip_clr;
     logic [63:0]            iommu_hpmcycles;
@@ -79,6 +81,8 @@ assign iommu_apb_slverr_o = iommu_apb_wen || iommu_apb_ren;
 
 assign iommu_apb_wen = iommu_apb_wen_i && iommu_penable_i && (
                             (iommu_apb_addr_i == 12'h014) ||
+                            (iommu_apb_addr_i == 12'h060) ||
+                            (iommu_apb_addr_i == 12'h064) ||
                             (iommu_apb_addr_i == 12'h2b0));//empty
 
 assign iommu_apb_ren = iommu_apb_ren_i && iommu_penable_i && (
@@ -115,6 +119,7 @@ always@(posedge iommu_clk or negedge iommu_rstn) begin
         iommu_ddtp <= 48'd0;
         iommu_ipsr_pmip_clr <= 1'b0;
         iommu_iocntinh <= 32'd0;
+        iommu_iohpmcycles <= 64'd0;
         for (int i = 0;i < 31; i++) begin
             iommu_hpmctr[i] <= 64'd0;
             iommu_hpmevt[i] <= 64'd0;
@@ -136,6 +141,8 @@ always@(posedge iommu_clk or negedge iommu_rstn) begin
             12'h054:
                 iommu_ipsr_pmip_clr <= iommu_apb_wdata_i[2];
             12'h05c: iommu_iocntinh <= iommu_apb_wdata_i;
+            12'h060: iommu_iohpmcycles[31:0]  <= iommu_apb_wdata_i;
+            12'h064: iommu_iohpmcycles[63:32] <= iommu_apb_wdata_i;
             12'h068 : iommu_hpmctr[0][31:0]  <= iommu_apb_wdata_i;
             12'h070 : iommu_hpmctr[1][31:0]  <= iommu_apb_wdata_i;
             12'h078 : iommu_hpmctr[2][31:0]  <= iommu_apb_wdata_i;
@@ -266,6 +273,7 @@ always@(posedge iommu_clk or negedge iommu_rstn) begin
                     iommu_ddtp <= iommu_ddtp;
                     iommu_ipsr_pmip_clr <= iommu_ipsr_pmip_clr;
                     iommu_iocntinh <= iommu_iocntinh;
+                    iommu_iohpmcycles <= iommu_iohpmcycles;
                 end
             endcase
     else
@@ -296,12 +304,20 @@ assign iommu_hpmcnt_cy_o = iommu_hpmcycles[63];
 
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
-        iommu_hpmcycles <= 64'd0;
-    else if (iommu_iocntinh[0] || iommu_ipsr_pmip_clr)
-        iommu_hpmcycles <= 64'd0;
+        atd_iocntinh <= 1'b0;
     else
-        iommu_hpmcycles <= iommu_hpmcycles + 1'b1;
+        atd_iocntinh <= iommu_iocntinh[0];
 end
 
+always@(posedge iommu_clk or negedge iommu_rstn) begin
+    if (!iommu_rstn)
+        iommu_hpmcycles <= 64'd0;
+    else if ((atd_iocntinh && !iommu_iocntinh[0]) || (iommu_ipsr_pmip_clr && iommu_hpmcycles[63]))
+        iommu_hpmcycles <= iommu_iohpmcycles;
+    else if (!iommu_iocntinh[0])
+        iommu_hpmcycles <= iommu_hpmcycles + 1'b1;
+    else
+        iommu_hpmcycles <= iommu_hpmcycles;
+end
 
 endmodule

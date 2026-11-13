@@ -413,7 +413,7 @@ endgenerate//}}}
     assign mrif_interrupt_id_invalid= (mrif_interrupt_id[31:11]!='d0);
     assign mrif_interrupt_id_row_idx= mrif_interrupt_id[10:6];
     assign mrif_interrupt_id_col_idx= mrif_interrupt_id[5:0];
-    assign mrif_interrupt_id_bits   = 32'b1 << mrif_interrupt_id_col_idx[5:0];
+    assign mrif_interrupt_id_bits   = 32'b1 << mrif_interrupt_id_col_idx[4:0];
 
     always@(posedge clk or negedge rstn) begin
         if(~rstn) begin
@@ -444,11 +444,11 @@ endgenerate//}}}
     end
 
 generate // mrif_wdata/wstrb{{{
-    if(BUS_ADDR_WIDTH==32) begin: wdata32_mrifout_gen
+    if(BUS_DATA_WIDTH==32) begin: wdata32_mrifout_gen
         assign mrif_wdata_final = mrif_interrupt_id_bits;
         assign mrif_wstrb_final = 4'b1111;
     end
-    else if(BUS_ADDR_WIDTH==64|BUS_ADDR_WIDTH==128) begin: wdata64_128_mrifout_gen
+    else if(BUS_DATA_WIDTH==64|BUS_DATA_WIDTH==128) begin: wdata64_128_mrifout_gen
         always@(*) begin
             case(mrif_interrupt_id_col_idx[5])
             1'b0    : begin mrif_wdata_final = {{(BUS_DATA_WIDTH-32){1'b0}},mrif_interrupt_id_bits} << (32*0); mrif_wstrb_final = {{(BUS_STRB_WIDTH-4){1'b0}},4'b1111} << (4*0); end
@@ -457,7 +457,7 @@ generate // mrif_wdata/wstrb{{{
             endcase
         end
     end
-    else if(BUS_ADDR_WIDTH==256) begin: wdata256_mrifout_gen
+    else if(BUS_DATA_WIDTH==256) begin: wdata256_mrifout_gen
         always@(*) begin
             case({mrif_interrupt_id_row_idx[0],mrif_interrupt_id_col_idx[5]})
             2'b00   : begin mrif_wdata_final = {{(BUS_DATA_WIDTH-32){1'b0}},mrif_interrupt_id_bits} << (32*0+128*0); mrif_wstrb_final = {{(BUS_STRB_WIDTH-4){1'b0}},4'b1111} << (4*0+16*0); end
@@ -468,7 +468,7 @@ generate // mrif_wdata/wstrb{{{
             endcase
         end
     end
-    else if(BUS_ADDR_WIDTH==512) begin: wdata512_mrifout_gen
+    else if(BUS_DATA_WIDTH==512) begin: wdata512_mrifout_gen
         always@(*) begin
             case({mrif_interrupt_id_row_idx[1:0],mrif_interrupt_id_col_idx[5]})
             3'b000  : begin mrif_wdata_final = {{(BUS_DATA_WIDTH-32){1'b0}},mrif_interrupt_id_bits} << (32*0+128*0+256*0); mrif_wstrb_final = {{(BUS_STRB_WIDTH-4){1'b0}},4'b1111} << (4*0+16*0+32*0); end
@@ -483,7 +483,7 @@ generate // mrif_wdata/wstrb{{{
             endcase
         end
     end
-    else if(BUS_ADDR_WIDTH==1024) begin: wdata1024_mrifout_gen
+    else if(BUS_DATA_WIDTH==1024) begin: wdata1024_mrifout_gen
         always@(*) begin
             case({mrif_interrupt_id_row_idx[2:0],mrif_interrupt_id_col_idx[5]})
             4'b0000 : begin mrif_wdata_final = {{(BUS_DATA_WIDTH-32){1'b0}},mrif_interrupt_id_bits} << (32*0+128*0+256*0+512*0); mrif_wstrb_final = {{(BUS_STRB_WIDTH-4){1'b0}},4'b1111} << (4*0+16*0+32*0+64*0); end
@@ -513,7 +513,7 @@ generate // mrif_wdata/wstrb{{{
 endgenerate //}}}
 
     assign mrif_w2m_awpayld_o.axid      = mrif_awpayld.axid    ;
-    assign mrif_w2m_awpayld_o.axaddr    = {mrif_awpayld.axaddr[BUS_ADDR_WIDTH-1:9], mrif_interrupt_id_row_idx, mrif_interrupt_id_col_idx[5], 3'b000};//mrif_awpayld.axaddr  ;
+    assign mrif_w2m_awpayld_o.axaddr    = {mrif_awpayld.axaddr[BUS_ADDR_WIDTH-1:9], mrif_interrupt_id_row_idx, 1'b0,  mrif_interrupt_id_col_idx[5], 2'b00};//mrif_awpayld.axaddr  ;
     assign mrif_w2m_awpayld_o.axlen     = 'd0;//mrif_awpayld.axlen   ;
     assign mrif_w2m_awpayld_o.axsize    = 'd2;//mrif_awpayld.axsize  ;
     assign mrif_w2m_awpayld_o.axburst   = 'd1;//mrif_awpayld.axburst ;

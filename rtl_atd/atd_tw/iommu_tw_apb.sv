@@ -56,7 +56,7 @@ module iommu_tw_apb
     logic [47:0]            iommu_ddtp;
     logic [31:0]            iommu_iocntinh;
     logic [63:0]            iommu_iohpmcycles;
-    logic                   atd_iocntinh;
+    logic                   iommu_iocntinh_d;
 
     logic                   iommu_ipsr_pmip_clr;
     logic [63:0]            iommu_hpmcycles;
@@ -304,15 +304,15 @@ assign iommu_hpmcnt_cy_o = iommu_hpmcycles[63];
 
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
-        atd_iocntinh <= 1'b0;
+        iommu_iocntinh_d <= 1'b0;
     else
-        atd_iocntinh <= iommu_iocntinh[0];
+        iommu_iocntinh_d <= iommu_iocntinh[0];
 end
 
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
         iommu_hpmcycles <= 64'd0;
-    else if ((atd_iocntinh && !iommu_iocntinh[0]) || (iommu_ipsr_pmip_clr && iommu_hpmcycles[63]))
+    else if ((iommu_iocntinh_d && !iommu_iocntinh[0]) || (iommu_ipsr_pmip_clr && iommu_hpmcycles[63]))
         iommu_hpmcycles <= iommu_iohpmcycles;
     else if (!iommu_iocntinh[0])
         iommu_hpmcycles <= iommu_hpmcycles + 1'b1;

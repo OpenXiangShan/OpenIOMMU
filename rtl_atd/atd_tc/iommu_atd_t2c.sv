@@ -235,7 +235,7 @@ always@(*) begin
         IDLE:
             if ((!atd_t2c_connected_i) || (atd_t2c_connected_i && !atd_tc_connected))
                 t2c_ns = IDLE;
-            else if (!cq_wfifo_empty && atd_t2c_tready_i && (cq_req_idx < ({1'b0,atd_c2t_inv_tok_i} + 5'd1)))
+            else if (!cq_wfifo_empty && atd_t2c_tready_i && (cq_req_idx <= atd_c2t_inv_tok_i))
                 t2c_ns = T2C_CQ_RD;
             else if (!ptw_wfifo_empty && atd_t2c_tready_i)
                 t2c_ns = T2C_PTW_RD;

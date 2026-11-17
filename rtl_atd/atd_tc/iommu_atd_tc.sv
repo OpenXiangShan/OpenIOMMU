@@ -97,6 +97,7 @@ module iommu_atd_tc
     logic   [63:0]                  iommu_acd_cfg;
 
     logic                           atd_c2t_connected;
+    logic                           atd_c2t_inv_tok;
     logic                           atd_c2t_cq_ack;
     logic                           acd_fq_valid;
     logic                           atd_c2t_cfg_end;
@@ -158,6 +159,7 @@ iommu_atd_c2t u1_iommu_atd_c2t
     .atd_c2t_ruser_i                (atd_c2t_ruser_i),
 
     .atd_c2t_connected_o            (atd_c2t_connected),
+    .atd_c2t_inv_tok_o              (atd_c2t_inv_tok  ),
     .atd_c2t_cq_ack_o               (atd_c2t_cq_ack     ),
 
     .cdw_rfifo_wen_o                (cdw_rfifo_wen_o    ),
@@ -206,6 +208,7 @@ iommu_atd_t2c u2_iommu_atd_t2c
     .ptw_wfifo_full_o               (ptw_wfifo_full_o   ),
 
     .atd_t2c_connected_i            (atd_c2t_connected  ),
+    .atd_c2t_inv_tok_i              (atd_c2t_inv_tok    ),
     .atd_t2c_cq_ack_i               (atd_c2t_cq_ack     ),
     .atd_fq_ack_valid_i             (acd_fq_valid       ),
     .atd_t2c_cfg_end_o              (atd_c2t_cfg_end    ),

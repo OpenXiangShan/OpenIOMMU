@@ -1004,18 +1004,24 @@ always@(*) begin
             else
                 ptw_gpa_n = ptw_gpa_q;
         S1_L3_PTE:
-            if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en)
-                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:0], ptw_req_iova[26:18], 3'b0};
+            if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en && (pte.r || pte.x)) //updt1109
+                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:27], ptw_req_iova[26:0], 12'd0};
+            else if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en)
+                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:0], ptw_req_iova[26:18], 3'd0};
             else
                 ptw_gpa_n = ptw_gpa_q;
         S1_L2_PTE:
-            if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en)
-                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:0], ptw_req_iova[17:9], 3'b0};
+            if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en && (pte.r || pte.x)) //updt1109
+                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:18], ptw_req_iova[17:0], 12'd0};
+            else if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en)
+                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:0], ptw_req_iova[17:9], 3'd0};
             else
                 ptw_gpa_n = ptw_gpa_q;
         S1_L1_PTE:
-            if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en)
-                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:0], ptw_req_iova[8:0], 3'b0};
+            if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en && (pte.r || pte.x)) //updt1109
+                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:9], ptw_req_iova[8:0], 12'd0};
+            else if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && ptw_s2_en)
+                ptw_gpa_n = {pte.ppn[RISCV_GLEN-12-1:0], ptw_req_iova[8:0], 3'd0};
             else
                 ptw_gpa_n = ptw_gpa_q;
         S1_L0_PTE:
@@ -1934,7 +1940,7 @@ always@(posedge iommu_clk or negedge iommu_rstn) begin
         s1_size <= 2'd0;
     else if (ptw_rfifo_ren)
         s1_size <= 2'd0;
-    else if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && (pte.r || pte.x) && !ptw_s2_en)
+    else if (((ptw_rvalid_i && ptw_rlast_i) || (s1ptc_hit_valid && s1ptc_hit)) && (pte.r || pte.x))
         if (ptw_cs == S1_L3_PTE)
             s1_size <= 2'd3;
         else if (ptw_cs == S1_L2_PTE)

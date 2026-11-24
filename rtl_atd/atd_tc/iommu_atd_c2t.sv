@@ -30,6 +30,7 @@ module iommu_atd_c2t
     input                           atd_c2t_ruser_i,
 
     output                          atd_c2t_connected_o,
+    output                          atd_c2t_inv_tok_o,
     output                          atd_c2t_cq_ack_o,
     //acd:ptw_req output to cdw
     output                          cdw_rfifo_wen_o,
@@ -84,6 +85,7 @@ module iommu_atd_c2t
 
     logic   [3:0]                   msg_code;
     logic                           atd_c2t_connected;
+    logic   [3:0]                   atd_c2t_inv_tok;
     logic                           atd_c2t_cq_ack;
     logic                           atd_c2t_fence_ready;
     logic                           atd_c2t_dvm_ready;
@@ -109,6 +111,7 @@ module iommu_atd_c2t
 //gen signals
 ////////**********************************************************************************************************///////
 assign atd_c2t_connected_o = atd_c2t_connected;
+assign atd_c2t_inv_tok_o = atd_c2t_inv_tok;
 assign atd_c2t_cq_ack_o = atd_c2t_cq_ack;
 assign atd_c2t_fence_ready_o = atd_c2t_fence_ready && atd_c2t_connected;
 assign atd_c2t_dvm_ready_o = atd_c2t_dvm_ready && atd_c2t_connected;
@@ -125,6 +128,15 @@ always@(posedge iommu_clk or negedge iommu_rstn) begin
 //  else if (atd_c2t_rvalid_i && atd_c2t_rlast_i && (msg_code == 4'd0) && (atd_c2t_rdata_i[7:4] == 4'd0))
     else if ((c2t_cs == IDLE) && atd_c2t_rvalid_i && atd_c2t_rlast_i && (atd_c2t_rdata_i[3:0] == 4'd0) && (atd_c2t_rdata_i[7:4] == 4'd0))
         atd_c2t_connected <= 1'b0;
+end
+
+always@(posedge iommu_clk or negedge iommu_rstn) begin
+    if (!iommu_rstn)
+        atd_c2t_inv_tok <= 4'd0;
+    else if ((c2t_cs == IDLE) && atd_c2t_rvalid_i && atd_c2t_rlast_i && (atd_c2t_rdata_i[3:0] == 4'd0) && (atd_c2t_rdata_i[7:4] == 4'd1))
+        atd_c2t_inv_tok <= atd_c2t_rdata_i[31:28];
+    else if ((c2t_cs == IDLE) && atd_c2t_rvalid_i && atd_c2t_rlast_i && (atd_c2t_rdata_i[3:0] == 4'd0) && (atd_c2t_rdata_i[7:4] == 4'd0))
+        atd_c2t_inv_tok <= 4'd0;
 end
 
 always@(posedge iommu_clk or negedge iommu_rstn) begin
@@ -186,9 +198,7 @@ always@(*) begin
                         else
                             c2t_ns = IDLE;
                     FAULT_RPT://five dws
-                        if (acd_fq_ready_i && !atd_c2t_rlast_i)
-                            c2t_ns = C2T_WAIT_FLAST;
-                        else if (!atd_c2t_rlast_i)
+                        if (atd_c2t_rready && !atd_c2t_rlast_i)
                             c2t_ns = C2T_WAIT_FLAST;
                         else
                             c2t_ns = IDLE;
@@ -235,7 +245,7 @@ always@(*) begin
         atd_c2t_rready = 1'b1;
     else if ((c2t_cs == IDLE) && (msg_code == FENCE_ACK) && atd_c2t_rvalid_i && atd_c2t_rlast_i)
         atd_c2t_rready = 1'b1;
-    else if (((c2t_cs == IDLE) && (msg_code == FAULT_RPT) && atd_c2t_rvalid_i && !acd_fq_ready_i) || ((c2t_cs == C2T_WAIT_FLAST) && atd_c2t_rvalid_i))
+    else if (((c2t_cs == IDLE) && (msg_code == FAULT_RPT) && atd_c2t_rvalid_i && acd_fq_ready_i) || ((c2t_cs == C2T_WAIT_FLAST) && atd_c2t_rvalid_i))
         atd_c2t_rready = 1'b1;
     else if ((c2t_cs == IDLE) && (msg_code == INT_RPT) && atd_c2t_rvalid_i && atd_c2t_rlast_i)
         atd_c2t_rready = 1'b1;
@@ -311,7 +321,7 @@ end
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
         acd_fq_record <= 256'd0;
-    else if (atd_c2t_rvalid_i && atd_c2t_rready)
+    else if ((c2t_cs == C2T_WAIT_FLAST) && atd_c2t_rvalid_i && atd_c2t_rready)
         case (acd_fq_record_cnt)
             2'd0:
                 acd_fq_record <= {acd_fq_record[64*4-1:64*1],atd_c2t_rdata_i};

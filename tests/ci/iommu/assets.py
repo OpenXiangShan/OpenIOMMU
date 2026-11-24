@@ -16,6 +16,40 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError("artifact redirect refused; use its final URL")
 
 
+def _jf_headers():
+    token = os.environ.get("IOMMU_CI_JF_TOKEN")
+    if not token:
+        raise ValueError("IOMMU_CI_JF_TOKEN is required for JFrog access")
+    return {"Authorization": "Bearer " + token}
+
+
+def _jf_url(spec):
+    base = os.environ.get("IOMMU_CI_JF_BASE_URL", "")
+    parsed = urllib.parse.urlsplit(base)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.query or parsed.fragment:
+        raise ValueError("IOMMU_CI_JF_BASE_URL must be HTTP(S), without credentials/query")
+    relative = spec["jf_path"]
+    if relative.startswith("/") or ".." in Path(relative).parts or ":" in relative:
+        raise ValueError("JF path must be repository-relative")
+    return base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/")
+
+
+def check_asset_access(spec):
+    """Probe authenticated read access without downloading the artifact body."""
+    headers = {**_jf_headers(), "Range": "bytes=0-0"}
+    request = urllib.request.Request(_jf_url(spec), headers=headers)
+    try:
+        with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+            status = getattr(response, "status", 200)
+            if status not in (200, 206):
+                raise RuntimeError(f"JF access probe returned HTTP {status}")
+            return status
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"JF access probe returned HTTP {exc.code}") from None
+    except urllib.error.URLError:
+        raise RuntimeError("JF access probe failed; check network and IOMMU_CI_JF_TOKEN") from None
+
+
 def verify(path, spec):
     path = Path(path)
     if not path.is_file() or path.stat().st_size != spec["size"] or sha256(path) != spec["sha256"]:
@@ -33,17 +67,8 @@ def get_asset(work, name, spec, assets_dir=None):
         source = verify(cached, spec)
         origin = "cache-verified"
     else:
-        base = os.environ.get("IOMMU_CI_JF_BASE_URL", "")
-        parsed = urllib.parse.urlsplit(base)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.query or parsed.fragment:
-            raise ValueError("IOMMU_CI_JF_BASE_URL must be HTTP(S), without credentials/query")
-        relative = spec["jf_path"]
-        if relative.startswith("/") or ".." in Path(relative).parts or ":" in relative:
-            raise ValueError("JF path must be repository-relative")
-        headers = {}
-        if os.environ.get("IOMMU_CI_JF_TOKEN"):
-            headers["Authorization"] = "Bearer " + os.environ["IOMMU_CI_JF_TOKEN"]
-        request = urllib.request.Request(base.rstrip("/") + "/" + urllib.parse.quote(relative, safe="/"), headers=headers)
+        headers = _jf_headers()
+        request = urllib.request.Request(_jf_url(spec), headers=headers)
         cached.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=cached.parent, prefix="download-")
         os.close(fd)
@@ -70,7 +95,7 @@ def get_asset(work, name, spec, assets_dir=None):
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"JF download returned HTTP {exc.code}") from None
         except urllib.error.URLError:
-            raise RuntimeError("JF download failed; check network and credentials") from None
+            raise RuntimeError("JF download failed; check network and IOMMU_CI_JF_TOKEN") from None
         finally:
             Path(temporary).unlink(missing_ok=True)
         source, origin = cached, "jf-verified"

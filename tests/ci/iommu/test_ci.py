@@ -1,17 +1,22 @@
 """Failure handling/identity tests; never claim these validate RTL."""
-import io
 import contextlib
+import hashlib
+import io
+import os
 from pathlib import Path
+import subprocess
 import sys
 import tarfile
 import tempfile
 import time
 import unittest
+from unittest import mock
+import urllib.error
 
-from assets import extract, verify
-from build import verify_bundle
+from assets import check_asset_access, extract, get_asset, verify
+from build import resolve_dependency, runtime_env, verify_bundle
 from ci import all_cases, check_runtime_output, collect, report, select_cases
-from common import run_logged, sha256, write_json
+from common import run_logged, sha256, simulator_environment, write_json
 from linux_case import check_boot_uart, check_uart, normalize_console
 
 
@@ -33,6 +38,43 @@ class HarnessTests(unittest.TestCase):
                   "evidence": {"driver.log": sha256(log)}}
         write_json(output / "result.json", result)
         return output, result
+
+    def dependency_repository(self):
+        remote = self.work / "qemu-remote"
+        subprocess.run(["git", "init", "-q", str(remote)], check=True)
+        return remote
+
+    def commit_dependency(self, remote):
+        subprocess.run(["git", "-C", str(remote), "-c", "user.name=CI Test",
+                        "-c", "user.email=ci@example.invalid", "-c", "commit.gpgsign=false",
+                        "commit", "-q", "--allow-empty", "-m", "advance devel"], check=True)
+        commit = subprocess.check_output(["git", "-C", str(remote), "rev-parse", "HEAD"], text=True).strip()
+        subprocess.run(["git", "-C", str(remote), "update-ref", "refs/heads/devel", commit], check=True)
+        return commit
+
+    def test_dependency_resolves_latest_remote_branch(self):
+        remote = self.dependency_repository()
+        spec = {"url": str(remote), "ref": "refs/heads/devel"}
+        first = self.commit_dependency(remote)
+        previous = resolve_dependency(spec, self.work / "first.log")
+        self.assertEqual(previous["commit"], first)
+        latest = self.commit_dependency(remote)
+        self.assertNotEqual(first, latest)
+        self.assertEqual(resolve_dependency(spec, self.work / "latest.log")["commit"], latest)
+        self.assertEqual(previous["commit"], first)
+
+    def test_dependency_missing_branch_blocks_selection(self):
+        remote = self.dependency_repository()
+        self.commit_dependency(remote)
+        with self.assertRaises(RuntimeError):
+            resolve_dependency({"url": str(remote), "ref": "refs/heads/missing"}, self.work / "missing.log")
+
+    def test_dependency_failure_preserves_git_diagnostic(self):
+        log = self.work / "unreachable.log"
+        with self.assertRaises(RuntimeError):
+            resolve_dependency({"url": str(self.work / "absent.git"), "ref": "refs/heads/devel"}, log)
+        self.assertIn("fatal:", log.read_text())
+        self.assertTrue(log.with_suffix(".log.command.json").is_file())
 
     def test_documentation_selection(self):
         self.assertEqual(select_cases(all_cases(), ["README.md", "docs/usage.md"]), [])
@@ -96,11 +138,109 @@ class HarnessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_bundle(self.work, self.pipeline)
 
+    def runtime_bundle(self, simulator="verilator"):
+        bundle = self.work / "relocated-bundle"
+        libs = bundle / "iommu"
+        libs.mkdir(parents=True)
+        (libs / ".simulator").write_text(simulator + "\n")
+        write_json(bundle / "build.json", {"simulator": simulator})
+        return bundle
+
+    def test_verilator_runtime_without_simulator_or_license_installation(self):
+        bundle = self.runtime_bundle()
+        # Runtime jobs only need the compiled bundle. A stale runner VCS_ENV
+        # must never be sourced, and inherited preload/bypass must not leak in.
+        inherited = {"PATH": "/missing", "VCS_ENV": "/missing/vcs-env",
+                     "LD_PRELOAD": "/old/libDPIiommu_wrap.so",
+                     "IO_SYSTEM_IOMMU_RTL_HW_BYPASS": "1",
+                     "IO_SYSTEM_IOMMU_TRACE": "1", "IO_SYSTEM_IOMMU_TRACE_TXN_ID": "7",
+                     "IO_SYSTEM_IOMMU_RTL_WAVEFORM": "/old/wave.fst"}
+        with mock.patch.dict(os.environ, inherited, clear=True), mock.patch(
+                "subprocess.run", side_effect=AssertionError("runtime invoked a tool")):
+            env = runtime_env(bundle)
+        self.assertEqual(env["IO_SYSTEM_IOMMU_RTL_API_SO"], str(bundle / "iommu/libiommu_api.so"))
+        self.assertEqual(env["LD_PRELOAD"].split(":"), [
+            str(bundle / "iommu/libUTiommu_wrap.so"), str(bundle / "iommu/libxspcomm.so")])
+        self.assertEqual(env["IO_SYSTEM_IOMMU_RTL_NO_WAVE"], "1")
+        for name in ("IO_SYSTEM_IOMMU_RTL_HW_BYPASS", "IO_SYSTEM_IOMMU_TRACE",
+                     "IO_SYSTEM_IOMMU_TRACE_TXN_ID", "IO_SYSTEM_IOMMU_RTL_WAVEFORM"):
+            self.assertNotIn(name, env)
+
+    def test_runtime_rejects_vcs_bundle(self):
+        with self.assertRaisesRegex(ValueError, "not a Verilator build"):
+            runtime_env(self.runtime_bundle("vcs"))
+
+    def test_runtime_rejects_conflicting_backend_marker(self):
+        bundle = self.runtime_bundle()
+        (bundle / "iommu/.simulator").write_text("vcs\n")
+        with self.assertRaisesRegex(ValueError, "not a Verilator build"):
+            runtime_env(bundle)
+
     def test_bad_asset_hash_rejected(self):
         asset = self.work / "asset"
         asset.write_bytes(b"test")
         with self.assertRaises(ValueError):
             verify(asset, {"size": 4, "sha256": "0" * 64})
+
+    def test_verible_directory_is_added_to_simulator_path(self):
+        verible_dir = self.work / "verible/bin"
+        environment = {
+            "PATH": "/usr/bin",
+            "IOMMU_CI_VERIBLE_DIR": str(verible_dir),
+        }
+        with mock.patch.dict(os.environ, environment, clear=True):
+            resolved = simulator_environment()
+        self.assertEqual(resolved["PATH"].split(os.pathsep),
+                         [str(verible_dir), "/usr/bin"])
+
+    def test_jf_asset_download_uses_single_bearer_token(self):
+        payload = b"test"
+        spec = {"path": "asset.bin", "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(), "jf_path": "repo/asset.bin"}
+        seen_auth = []
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                self.close()
+
+        class Opener:
+            def open(self, request, timeout):
+                self.assert_timeout = timeout
+                token = request.get_header("X-jfrog-art-api")
+                authorization = request.get_header("Authorization")
+                seen_auth.append((token, authorization))
+                return Response(payload)
+
+        environment = {
+            "IOMMU_CI_JF_BASE_URL": "https://jfrog.example.invalid/artifactory",
+            "IOMMU_CI_JF_TOKEN": "primary",
+            "IOMMU_CI_JF_TOKEN_2": "must-not-be-used",
+        }
+        with mock.patch.dict(os.environ, environment, clear=False), \
+                mock.patch("assets.urllib.request.build_opener", return_value=Opener()):
+            asset = get_asset(self.work, "fallback-test", spec)
+
+        self.assertEqual(seen_auth, [(None, "Bearer primary")])
+        self.assertEqual(asset.read_bytes(), payload)
+
+    def test_jf_access_probe_reports_forbidden(self):
+        spec = {"jf_path": "repo/asset.bin"}
+
+        class Opener:
+            def open(self, request, timeout):
+                raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", None, None)
+
+        environment = {
+            "IOMMU_CI_JF_BASE_URL": "https://jfrog.example.invalid/artifactory",
+            "IOMMU_CI_JF_TOKEN": "invalid",
+        }
+        with mock.patch.dict(os.environ, environment, clear=False), \
+                mock.patch("assets.urllib.request.build_opener", return_value=Opener()):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                check_asset_access(spec)
 
     def test_archive_traversal_rejected(self):
         archive = self.work / "bad.tar"

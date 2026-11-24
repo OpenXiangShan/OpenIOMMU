@@ -132,11 +132,11 @@ definitions. Common definitions are:
 
 ## 持续集成（CI）
 
-GitLab 和 GitHub 共用 picker/VCS、RTL IOMMU、QEMU io-system 测试入口、
+GitLab 和 GitHub 共用 Picker/Verilator、RTL IOMMU、QEMU io-system 测试入口、
 工具包和 JFrog 镜像清单。用例和运行说明见
 [`tests/ci/iommu/README.md`](tests/ci/iommu/README.md)。
 
-GitLab and GitHub share the same Picker/VCS, RTL IOMMU and QEMU io-system
+GitLab and GitHub share the same Picker/Verilator, RTL IOMMU and QEMU io-system
 test harness and immutable artifact inputs. See the
 [CI guide](tests/ci/iommu/README.md).
 

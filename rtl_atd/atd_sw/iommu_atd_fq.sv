@@ -126,6 +126,7 @@ module iommu_atd_fq #(
     fq_entry_t              fq_entry_q;
 
     logic                   fq_rfifo_empty;
+    logic                   fq_rfifo_discard;
     logic                   fq_acd_rfifo_empty;
     logic                   fq_acd_rfifo_full;
     logic                   fq_acd_rfifo_ren;
@@ -214,9 +215,12 @@ assign fq_wdata_o = fq_wdata;
 // Must be set on each transfer
 
 
-assign fq_acd_rfifo_ren = (fq_cs == ACD_W_DATA) && fq_wready_i;
-assign fq_cdw_rfifo_ren = (fq_cs == CDW_W_DATA) && fq_wready_i;
-assign fq_ptw_rfifo_ren = (fq_cs == PTW_W_DATA) && fq_wready_i;
+// Discard fault records while fqof/fqmf is set or the FQ is disabled
+assign fq_rfifo_discard = (fq_cs == ERROR) || (!fq_en_d && (fq_cs == IDLE));
+
+assign fq_acd_rfifo_ren = ((fq_cs == ACD_W_DATA) && fq_wready_i) || (fq_rfifo_discard && !fq_acd_rfifo_empty);
+assign fq_cdw_rfifo_ren = ((fq_cs == CDW_W_DATA) && fq_wready_i) || (fq_rfifo_discard && !fq_cdw_rfifo_empty);
+assign fq_ptw_rfifo_ren = ((fq_cs == PTW_W_DATA) && fq_wready_i) || (fq_rfifo_discard && !fq_ptw_rfifo_empty);
 
 
 always@(*) begin
@@ -232,7 +236,7 @@ end
 
 assign fq_wstrb_o = 32'hffff_ffff;
 // Must be set in the last transfer
-assign fq_wlast_o = fq_acd_rfifo_ren || fq_cdw_rfifo_ren || fq_ptw_rfifo_ren;
+assign fq_wlast_o = ((fq_cs == ACD_W_DATA) || (fq_cs == CDW_W_DATA) || (fq_cs == PTW_W_DATA)) && fq_wready_i;
 
 // Send data through W channel
 assign fq_wvalid_o = (fq_cs == ACD_W_DATA) || (fq_cs == CDW_W_DATA) || (fq_cs == PTW_W_DATA);

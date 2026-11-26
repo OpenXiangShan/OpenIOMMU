@@ -373,6 +373,18 @@ always@(*) begin
         atd_t2c_tlast = 1'b0;
 end
 
+//acd inv credit
+always@(posedge iommu_clk or negedge iommu_rstn) begin
+    if (!iommu_rstn)
+        acd_inv_credit <= 3'(ACD_INV_CREDITS);
+    else if (!atd_t2c_connected_i)
+        acd_inv_credit <= 3'(ACD_INV_CREDITS);
+    else if (cq_wfifo_ren && !atd_t2c_cq_ack_i)
+        acd_inv_credit <= acd_inv_credit - 3'd1;
+    else if (!cq_wfifo_ren && atd_t2c_cq_ack_i)
+        acd_inv_credit <= acd_inv_credit + 3'd1;
+end
+
 always@(posedge iommu_clk or negedge iommu_rstn) begin
     if (!iommu_rstn)
         cq_req_idx <= 4'd0;

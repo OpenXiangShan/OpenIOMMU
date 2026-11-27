@@ -37,6 +37,7 @@ module iommu_atd_sw #(
     output  [127:0]                 cq_atd_fifo_din_o,
     input                           cq_atd_fifo_full_i,
     output                          cq_atd_fence_valid_o,
+    output                          cq_ats_sync_req_o,
     input                           cq_atd_fence_ready_i,
 
     //cq to atd_tc
@@ -264,6 +265,7 @@ u1_iommu_atd_cq
     .cq_atd_fifo_din_o              (cq_atd_fifo_din_o),
     .cq_atd_fifo_full_i             (cq_atd_fifo_full_i),
     .cq_atd_fence_valid_o           (cq_atd_fence_valid_o),
+    .cq_ats_sync_req_o              (cq_ats_sync_req_o),
     .cq_atd_fence_ready_i           (cq_atd_fence_ready_i),
 
     //to atd_dti to acd

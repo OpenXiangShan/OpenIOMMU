@@ -370,6 +370,7 @@ module iommu_atd #(
     logic [127:0]                   cq_atd_fifo_din;
     logic                           cq_atd_fifo_full;
     logic                           cq_atd_fence_valid;
+    logic                           cq_ats_sync_req;
     logic                           cq_atd_fence_ready;
 
     logic                           cq_acd_fifo_wen;
@@ -534,7 +535,7 @@ iommu_atd_tr u1_iommu_atd_tr
     .pri_req_wdata_o                (pri_req_wdata),
     .pri_req_full_i                 (pri_req_full),
 
-    .ats_sync_req_i                 (cq_atd_fence_valid),
+    .ats_sync_req_i                 (cq_ats_sync_req),
     .ats_sync_ack_o                 (cq_atc_fence_ready),
 
     .ats_resp_wen_i                 (ats_resp_wen),
@@ -785,6 +786,7 @@ u3_iommu_atd_sw
     .cq_atd_fifo_din_o              (cq_atd_fifo_din),
     .cq_atd_fifo_full_i             (cq_atd_fifo_full),
     .cq_atd_fence_valid_o           (cq_atd_fence_valid),
+    .cq_ats_sync_req_o              (cq_ats_sync_req),
     .cq_atd_fence_ready_i           (cq_atd_fence_ready),
 
     //cq to atd_tc
